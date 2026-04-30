@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+*.js.map
+
+# Plan files
+PLAN.md
+planning.md
+discuss.md
