@@ -50,6 +50,12 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 | [structured-output](./01-basics/structured-output/) | Getting reliable JSON back from an LLM |
 | [streaming](./01-basics/streaming/) | Handling partial response chunks as they arrive |
 | [conversation-history](./01-basics/conversation-history/) | Maintaining multi-turn memory with a messages array |
+| [system-vs-user-prompt](./01-basics/system-vs-user-prompt/) | Comparing system instructions with user prompts |
+| [temperature-and-tokens](./01-basics/temperature-and-tokens/) | Seeing how temperature and token limits affect output |
+| [prompt-templates](./01-basics/prompt-templates/) | Filling simple string templates with variables |
+| [few-shot-prompting](./01-basics/few-shot-prompting/) | Providing examples in context instead of fine-tuning |
+| [error-handling-retries](./01-basics/error-handling-retries/) | Retrying rate limits and transient failures safely |
+| [input-output-validation](./01-basics/input-output-validation/) | Validating prompts and model output at the boundary |
 
 *More patterns coming — agent loops, tool use, memory, multi-agent, reliability, observability.*
 
