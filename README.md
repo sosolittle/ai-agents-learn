@@ -29,7 +29,7 @@ npx ts-node index.ts
 
 You need:
 - Node.js 18+
-- An Anthropic API key (get one at [console.anthropic.com](https://console.anthropic.com))
+- an OpenAI API key (get one at [platform.openai.com](https://platform.openai.com))
 
 ---
 
@@ -48,6 +48,8 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 | [simple-llm-call](./01-basics/simple-llm-call/) | One API call, reading the response, understanding tokens |
 | [prompt-chaining](./01-basics/prompt-chaining/) | Passing output of one call as input to the next |
 | [structured-output](./01-basics/structured-output/) | Getting reliable JSON back from an LLM |
+| [streaming](./01-basics/streaming/) | Handling partial response chunks as they arrive |
+| [conversation-history](./01-basics/conversation-history/) | Maintaining multi-turn memory with a messages array |
 
 *More patterns coming — agent loops, tool use, memory, multi-agent, reliability, observability.*
 
