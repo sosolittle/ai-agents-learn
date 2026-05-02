@@ -1,6 +1,6 @@
 # Conversation History
 
-Multi-turn conversation is just a growing `messages` array that you send back to the model on every request.
+Conversation history is a `messages` array that your application sends back to the model on each turn so the model can use prior context.
 
 ---
 
@@ -9,7 +9,13 @@ Multi-turn conversation is just a growing `messages` array that you send back to
 - Maintaining conversation history in application code
 - Appending each user message before the API call
 - Appending each assistant response after the API call
-- Running a simple hardcoded 3-turn conversation
+- Running a simple hardcoded three-turn conversation
+
+---
+
+## Why this matters
+
+The API does not remember previous requests for you. If an assistant should respond with context, your application must decide which past messages to include, how much history is worth paying for, and when history needs trimming or summarization.
 
 ---
 
@@ -23,7 +29,9 @@ npm install
 npm start
 ```
 
-Expected output:
+---
+
+## Expected output
 
 ```text
 User:
@@ -41,11 +49,9 @@ system -> user -> assistant
 
 ---
 
-## The key insight
+## The code, explained
 
-The API does not remember your previous request. There is no hidden server-side conversation state.
-
-This array is the memory:
+The array is the conversation state:
 
 ```ts
 messages.push({ role: "user", content: userTurn });
@@ -53,4 +59,33 @@ const response = await client.chat.completions.create({ messages, ... });
 messages.push({ role: "assistant", content: assistantReply });
 ```
 
-If you leave an earlier turn out of `messages`, the model cannot use it. If you want the conversation to continue tomorrow, you need to store the messages yourself and send the relevant history again.
+If a message is missing from the array, the model cannot use it. If you want the conversation to continue later, you need to store the relevant messages yourself.
+
+---
+
+## The key insight
+
+Context is not free memory. History grows, costs tokens, and eventually needs selection, trimming, or summarization.
+
+---
+
+## What can go wrong
+
+- Sending the full history forever increases cost and latency.
+- Dropping important turns can make the assistant forget key facts.
+- Old user instructions can conflict with new goals.
+- Sensitive information can accidentally be resent in later calls.
+
+---
+
+## Where this shows up in agents
+
+Agents use conversation history for chat continuity, task state, previous tool results, planner notes, and summaries of prior steps.
+
+---
+
+## Try it yourself
+
+- Remove the first user turn and see how the later answer changes.
+- Add a fourth turn that depends on earlier context.
+- Print token usage as the conversation grows.

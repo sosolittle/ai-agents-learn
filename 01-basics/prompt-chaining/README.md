@@ -1,15 +1,21 @@
 # Prompt Chaining
 
-The simplest multi-step pattern: take the output of one LLM call and feed it directly as input to the next.
+Prompt chaining breaks a larger task into smaller model calls where each step uses the previous step's output.
 
 ---
 
 ## What this demonstrates
 
-- Breaking a complex task into smaller, focused steps
-- Passing context forward between calls
-- How each step can be independently tuned or swapped
-- Why sequential calls give you more control than one long prompt
+- Generating a title, then an outline, then a paragraph
+- Passing output from one call into the next call
+- Keeping chain steps inspectable
+- Making each step separately retryable or replaceable
+
+---
+
+## Why this matters
+
+Many agent workflows are chains before they are loops. Splitting work into steps makes intermediate results visible, which helps you debug, retry, validate, or improve one part without rerunning the whole workflow blindly.
 
 ---
 
@@ -23,28 +29,28 @@ npm install
 npm start
 ```
 
-Expected output:
+---
 
-```
+## Expected output
+
+```text
 Step 1: Generating title...
-Title: Why Your AI Agent Keeps Getting Stuck in Infinite Loops (And How to Fix It)
+Title: Why Your AI Agent Keeps Getting Stuck in Infinite Loops
 
 Step 2: Writing outline from title...
 Outline:
- 1. What an infinite loop looks like in an agent context ...
- 2. The three root causes: missing exit conditions ...
- ...
+1. What an infinite loop looks like...
 
 Step 3: Expanding first point into a paragraph...
 Paragraph:
- An infinite loop in an AI agent happens when the agent's reasoning cycle ...
+An infinite loop in an AI agent happens when...
 ```
 
 ---
 
 ## The code, explained
 
-The key idea is a simple helper that wraps a single call:
+A helper wraps one model call:
 
 ```ts
 async function complete(prompt: string): Promise<string> {
@@ -53,30 +59,41 @@ async function complete(prompt: string): Promise<string> {
 }
 ```
 
-Then each step uses the previous output directly:
+Then each step passes data forward:
 
 ```ts
-const title  = await complete(`Generate a title about: ${topic}`);
+const title = await complete(`Generate a title about: ${topic}`);
 const outline = await complete(`Write an outline for: "${title}"`);
 const paragraph = await complete(`Expand this point: ${firstPoint}`);
 ```
 
-Each call is small and focused. The model doesn't have to juggle "generate a title AND an outline AND expand a section" in one go — it just does one thing well.
-
-**Why not just use one big prompt?**
-
-You could write `"Generate a title, then an outline, then expand the first point"` in a single prompt. The problem: you lose control. You can't inspect the intermediate outputs, you can't retry just one step, and the model's attention is split across all three tasks. Chaining keeps each step auditable and replaceable.
+The important engineering move is not the helper function. It is the decision to make the intermediate outputs explicit.
 
 ---
 
-## The tradeoff
+## The key insight
 
-**More calls = more latency and cost.** Each step is a round-trip to the API. For a 3-step chain this is fine; for a 20-step chain, you'll want to think carefully about what actually needs to be sequential vs. what can run in parallel.
-
-**Order matters.** A bad step 1 poisons every step after it. If the title is vague, the outline will be vague. Add validation between steps if quality matters — that's covered in [06-reliability/evaluation](../../06-reliability/evaluation/).
+Chains trade extra calls for control. You can inspect, retry, and validate each step.
 
 ---
 
-## Where this lives in AgentFlow
+## What can go wrong
 
-AgentFlow's pipeline canvas is prompt chaining made visual — each node is a step, and edges define the data flow. The output of one node becomes the input to the next, and you can inspect intermediate values at every connection.
+- Bad output from step 1 poisons step 2.
+- Each extra call adds latency and cost.
+- Later prompts may need validation around earlier outputs.
+- Long chains can become hard to reason about without logs.
+
+---
+
+## Where this shows up in agents
+
+Agents use chains for planning, research summaries, report generation, code review, extraction pipelines, and any workflow where one model step prepares context for the next.
+
+---
+
+## Try it yourself
+
+- Add a validation check after the title step.
+- Retry only the outline step with a different prompt.
+- Split the paragraph step into two paragraphs and compare quality.
