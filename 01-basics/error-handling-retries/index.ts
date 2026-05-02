@@ -17,28 +17,36 @@ function isRetryable(error: ApiLikeError) {
 }
 
 function errorType(error: ApiLikeError) {
-  if (error.status === 429) return "rate limit";
-  if (error.status !== undefined && error.status >= 500) return "server error";
-  if (error.status === 400) return "bad request";
-  if (error.status === 401) return "auth error";
-  return "unknown error";
+  if (error.status === 429) return "rate_limit";
+  if (error.status !== undefined && error.status >= 500) return "server_error";
+  if (error.status === 400) return "bad_request";
+  if (error.status === 401) return "auth_error";
+  return "unknown_error";
+}
+
+function backoffWithJitter(attempt: number) {
+  const baseDelayMs = 1000;
+  const jitterMs = Math.floor(Math.random() * 250);
+
+  return baseDelayMs * 2 ** (attempt - 1) + jitterMs;
 }
 
 async function callWithRetries(prompt: string) {
-  const maxRetries = 3;
-  const maxAttempts = maxRetries + 1;
+  const maxAttempts = 4;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      // Attempt 1 is intentionally simulated so this example always shows a 429 retry.
       if (attempt === 1) {
         throw { status: 429, message: "Simulated rate limit" };
       }
 
+      // Attempt 2 is intentionally simulated so this example always shows a 500 retry.
       if (attempt === 2) {
         throw { status: 500, message: "Simulated transient server error" };
       }
 
-      console.log(`Attempt ${attempt}: sending request`);
+      console.log(`attempt=${attempt} sending request`);
 
       const response = await client.chat.completions.create({
         model: "gpt-4o-mini",
@@ -49,17 +57,17 @@ async function callWithRetries(prompt: string) {
       return response.choices[0].message.content ?? "";
     } catch (error) {
       const apiError = error as ApiLikeError;
-      const waitMs = 1000 * 2 ** (attempt - 1);
+      const retryable = isRetryable(apiError);
+      const waitMs = backoffWithJitter(attempt);
 
       console.log(
-        `Attempt ${attempt}: ${errorType(apiError)} (${apiError.status ?? "no status"})`
+        `attempt=${attempt} error_type=${errorType(apiError)} status=${apiError.status ?? "none"} retryable=${retryable} wait_ms=${retryable && attempt < maxAttempts ? waitMs : 0}`
       );
 
-      if (!isRetryable(apiError) || attempt === maxAttempts) {
+      if (!retryable || attempt === maxAttempts) {
         throw error;
       }
 
-      console.log(`Waiting ${waitMs / 1000}s before retry...`);
       await wait(waitMs);
     }
   }
