@@ -3,7 +3,8 @@ import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const prompt = "Name three great programming languages and briefly say why.";
+const prompt =
+  "Generate 5 product names for a visual AI workflow builder for developers.";
 
 async function complete(temperature: number, maxTokens: number) {
   const response = await client.chat.completions.create({
@@ -18,7 +19,27 @@ async function complete(temperature: number, maxTokens: number) {
   return {
     text: choice.message.content ?? "",
     finishReason: choice.finish_reason,
+    usage: response.usage,
   };
+}
+
+async function runCase(label: string, temperature: number, maxTokens: number) {
+  const result = await complete(temperature, maxTokens);
+
+  console.log(label);
+  console.log(`settings: temperature=${temperature}, max_tokens=${maxTokens}`);
+  console.log("\noutput:");
+  console.log(result.text);
+  console.log("\nfinish_reason:", result.finishReason);
+
+  if (result.usage) {
+    console.log(
+      `tokens: prompt=${result.usage.prompt_tokens}, completion=${result.usage.completion_tokens}, total=${result.usage.total_tokens}`
+    );
+  }
+
+  console.log("-".repeat(60));
+  return result.text;
 }
 
 async function main() {
@@ -26,29 +47,14 @@ async function main() {
   console.log(prompt);
   console.log("-".repeat(60));
 
-  const first = await complete(0, 50);
-  console.log("Call 1: temperature=0, max_tokens=50");
-  console.log(first.text);
-  console.log("finish_reason:", first.finishReason);
+  const first = await runCase("Call 1", 0, 120);
+  const second = await runCase("Call 2", 0, 120);
+  console.log("Temperature 0 outputs matched exactly:", first === second);
   console.log("-".repeat(60));
 
-  const second = await complete(0, 50);
-  console.log("Call 2: temperature=0, max_tokens=50");
-  console.log(second.text);
-  console.log("finish_reason:", second.finishReason);
-  console.log("Matched call 1:", second.text === first.text);
-  console.log("-".repeat(60));
-
-  const third = await complete(1.2, 50);
-  console.log("Call 3: temperature=1.2, max_tokens=50");
-  console.log(third.text);
-  console.log("finish_reason:", third.finishReason);
-  console.log("-".repeat(60));
-
-  const fourth = await complete(0, 10);
-  console.log("Call 4: temperature=0, max_tokens=10");
-  console.log(fourth.text);
-  console.log("finish_reason:", fourth.finishReason);
+  await runCase("Call 3", 0.7, 120);
+  await runCase("Call 4", 1.2, 120);
+  await runCase("Call 5", 0.7, 20);
 }
 
 main().catch(console.error);

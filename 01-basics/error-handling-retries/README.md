@@ -1,16 +1,24 @@
 # Error Handling Retries
 
-Production LLM calls need retry logic that knows which failures are worth retrying.
+Retry logic helps an LLM call recover from temporary failures without hiding real bugs or retrying unsafe requests forever.
 
 ---
 
 ## What this demonstrates
 
-- Retrying retryable failures up to three attempts
-- Using exponential backoff delays of 1s, 2s, and 4s
-- Treating 429 and 5xx errors as retryable
-- Treating 400 and 401 errors as non-retryable
-- Logging attempt number, error type, and wait time
+- Simulating a 429 rate limit and a 500 server error
+- Retrying only retryable failures
+- Using exponential backoff with jitter
+- Logging attempt number, error type, status, retryability, and wait time
+- Stopping after a readable max attempt count
+
+---
+
+## Why this matters
+
+Agents often make many LLM and tool calls. Without a retry policy, one temporary API failure can break an entire multi-step run. With a sloppy retry policy, the system can waste money, worsen rate limits, or hide the real error.
+
+This example intentionally simulates 429 and 500 errors so you can see the retry path without waiting for real API failures.
 
 ---
 
@@ -24,14 +32,14 @@ npm install
 npm start
 ```
 
-Expected output:
+---
+
+## Expected output
 
 ```text
-Attempt 1: rate limit (429)
-Waiting 1s before retry...
-Attempt 2: server error (500)
-Waiting 2s before retry...
-Attempt 3: sending request
+attempt=1 error_type=rate_limit status=429 retryable=true wait_ms=1137
+attempt=2 error_type=server_error status=500 retryable=true wait_ms=2094
+attempt=3 sending request
 
 Final result:
 Exponential backoff is...
@@ -39,8 +47,58 @@ Exponential backoff is...
 
 ---
 
+## The code, explained
+
+The example treats 429 and 5xx errors as retryable:
+
+```ts
+return error.status === 429 || error.status >= 500;
+```
+
+It waits longer after each failure and adds jitter:
+
+```ts
+baseDelayMs * 2 ** (attempt - 1) + jitterMs
+```
+
+Jitter prevents every retrying worker from waking up at the exact same time.
+
+---
+
 ## The key insight
 
-Not all errors are the same. A 429 means "slow down and retry." A 401 means "fix your API key," so retrying is pointless.
+Retry the errors that might recover. Fail fast on errors that need a code, auth, or input fix.
 
-Naive retry-everything loops waste money and hide real configuration bugs. Backoff matters too: if you hammer a rate-limited API immediately after every failure, you can make the problem worse instead of recovering from it.
+---
+
+## What can go wrong
+
+- Retrying 401 or 400 forever wastes money.
+- Retrying instantly can worsen rate limits.
+- Hiding final errors makes debugging harder.
+- No max attempts can create infinite loops.
+
+---
+
+## Where this shows up in agents
+
+Agents often make many LLM/tool calls. Without retry policy, a temporary API failure can break an entire multi-step run.
+
+---
+
+## Production upgrades
+
+- Add jitter, as shown here.
+- Add a request timeout.
+- Log request IDs for correlation.
+- Set a max total retry time.
+- Return a fallback response when appropriate.
+- Alert after repeated failures.
+
+---
+
+## Try it yourself
+
+- Change the simulated first error to `401` and confirm it does not retry.
+- Increase `maxAttempts` to 5 and inspect the wait times.
+- Change jitter from `250` to `1000` and see how the logs differ.

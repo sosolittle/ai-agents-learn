@@ -1,15 +1,21 @@
 # Streaming
 
-Streaming lets you handle an LLM response as it is generated instead of waiting for the whole message to finish.
+Streaming lets your app receive an LLM response piece by piece as it is generated instead of waiting for the full message.
 
 ---
 
 ## What this demonstrates
 
-- A normal non-streaming `chat.completions` call
-- A streaming `chat.completions` call with `stream: true`
-- Iterating over stream events with `for await`
-- Printing partial tokens as they arrive
+- A normal non-streaming call
+- A streaming call with `stream: true`
+- Iterating through stream events with `for await`
+- Printing partial text chunks as they arrive
+
+---
+
+## Why this matters
+
+Streaming improves perceived latency. Users see the response begin quickly, even when the full answer takes longer. The tradeoff is that your code must handle partial state carefully.
 
 ---
 
@@ -23,7 +29,9 @@ npm install
 npm start
 ```
 
-Expected output:
+---
+
+## Expected output
 
 ```text
 Non-streaming call:
@@ -41,11 +49,9 @@ Streaming responses let your app receive text as the model generates it...
 
 ---
 
-## The key insight
+## The code, explained
 
-With a normal call, the response feels like one blob because your code only sees it after generation finishes.
-
-With streaming, the response arrives in chunks. Each event may contain a small piece of text, no text, or metadata. That means your code has to handle partial content:
+The streaming call returns an async iterable:
 
 ```ts
 for await (const event of stream) {
@@ -57,4 +63,33 @@ for await (const event of stream) {
 }
 ```
 
-The failure mode is assuming every event is a complete message. It is not. Your UI, CLI, or agent loop needs to build the final answer from many small pieces.
+Each event may contain a small piece of text, no text, or metadata. Your code has to assemble the final message from many chunks.
+
+---
+
+## The key insight
+
+Partial tokens are not complete messages. Streaming is a state-handling problem as much as a display feature.
+
+---
+
+## What can go wrong
+
+- UIs can treat partial output as final output.
+- Errors can happen halfway through a stream.
+- Moderation, validation, or JSON parsing cannot rely on unfinished text.
+- State can get out of sync if the final message is not reconstructed.
+
+---
+
+## Where this shows up in agents
+
+Agents use streaming for chat UIs, long-running reasoning displays, progress updates, and final responses where waiting for the full answer would feel slow.
+
+---
+
+## Try it yourself
+
+- Add a counter for how many chunks arrived.
+- Store the streamed chunks in a string and print the final message at the end.
+- Try streaming a longer answer and compare perceived speed.
