@@ -108,6 +108,21 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// parseToolArgs — safely parses the JSON string the model sends as arguments.
+// The model always sends arguments as a JSON string, never a plain object.
+// If the model sends malformed JSON (rare but possible), return empty rather
+// than crashing the loop — executeTool will surface a clear error instead.
+// ---------------------------------------------------------------------------
+
+function parseToolArgs(raw: string): Record<string, string> {
+  try {
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Dispatcher — routes the model's tool request to the right function.
 // This is the security boundary. The model can't run code — only request it.
 // Auth checks, rate limits, and input validation belong here.
@@ -115,9 +130,15 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
 
 function executeTool(name: string, args: Record<string, string>): string {
   switch (name) {
-    case "get_order_status":    return getOrderStatus(args.order_id);
-    case "check_inventory":     return checkInventory(args.product_name);
-    case "get_customer_profile": return getCustomerProfile(args.customer_id);
+    case "get_order_status":
+      if (!args.order_id) return "Missing required argument: order_id";
+      return getOrderStatus(args.order_id);
+    case "check_inventory":
+      if (!args.product_name) return "Missing required argument: product_name";
+      return checkInventory(args.product_name);
+    case "get_customer_profile":
+      if (!args.customer_id) return "Missing required argument: customer_id";
+      return getCustomerProfile(args.customer_id);
     default:
       // The model can hallucinate a tool name — always handle the unknown case.
       return `Unknown tool: "${name}"`;
@@ -175,7 +196,7 @@ async function runWithTools(userMessage: string): Promise<string> {
 
       for (const call of toolCalls) {
         // arguments arrives as a JSON string — always parse it.
-        const args = JSON.parse(call.function.arguments) as Record<string, string>;
+        const args = parseToolArgs(call.function.arguments);
         console.log(`  → ${call.function.name}(${JSON.stringify(args)})`);
 
         const result = executeTool(call.function.name, args);

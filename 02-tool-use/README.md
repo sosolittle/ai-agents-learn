@@ -6,6 +6,23 @@ Before this, you were sending text in and getting text back. Tool use changes th
 
 ---
 
+## Where you already see this pattern
+
+Tool use is what makes an AI assistant useful beyond text generation. Without tools, the model can only talk. With tools, the model can act through your code.
+
+You've already seen this pattern in tools you use every day:
+
+- **ChatGPT searching the web** before answering a current-events question — the model calls a search tool, reads the results, then composes its reply
+- **An assistant reading uploaded files** before summarising them — the file contents are fetched through a tool, not baked into the model
+- **A calendar assistant checking availability** before scheduling a meeting — the model calls a calendar lookup tool rather than guessing
+- **A customer support bot checking an order database** before replying — it looks up the real order status instead of making one up
+- **A coding assistant reading project files** before suggesting a fix — it fetches your actual code, not an imagined version of it
+- **A finance assistant using a calculator or database** before giving exact numbers — it calls a tool for precision rather than trusting its own arithmetic
+
+What they all have in common: the model pauses mid-conversation, calls a function, waits for a real result, and then answers. That loop is what this pattern is about.
+
+---
+
 ## The mental model
 
 If you've built a REST API, you already understand this.
@@ -164,6 +181,23 @@ messages.push({
 
 ---
 
+## What this example is / is not
+
+**This example is:**
+- a small runnable demo of function calling / tool use
+- a way to understand the request → tool call → tool result → final answer loop
+- intentionally built with mock data so the concept is easy to follow without any external setup
+
+**This example is not:**
+- a production customer support system
+- a full agent framework
+- a database, security, or auth implementation
+- a replacement for input validation, permissions, or rate limiting
+
+The goal is to make the pattern obvious. Real systems add layers on top; this example keeps the concept visible.
+
+---
+
 ## Run it
 
 ```bash
@@ -188,6 +222,26 @@ Model requested 2 tool call(s):
 
 ---
 
+## Example output
+
+Here is a realistic transcript for the query above (CUST-42 asking about Wireless Headphones):
+
+```
+User: I'm customer CUST-42. I want to reorder the Wireless Headphones from ORD-001. Are they in stock?
+
+Model requested 2 tool call(s):
+  → get_order_status({"order_id":"ORD-001"})
+  ← {"status":"shipped","item":"Wireless Headphones","quantity":1}
+  → check_inventory({"product_name":"Wireless Headphones"})
+  ← {"stock":14,"sku":"WH-100"}
+
+Assistant: Your order ORD-001 (Wireless Headphones) has been shipped. Good news — Wireless Headphones are currently in stock with 14 units available, so you can place a new order.
+```
+
+Your final wording may vary slightly because the model composes the final response.
+
+---
+
 ## What's next
 
 This pattern handles one user query at a time. The next level is the **agent loop** — where the model uses tools repeatedly over multiple steps to complete a longer task, without you driving each round manually.
@@ -202,3 +256,4 @@ That's in `03-agent-loop`.
 - [OpenAI tool_choice options](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice) — API reference for controlling tool selection
 - [JSON Schema basics](https://json-schema.org/understanding-json-schema) — understanding the parameter schema format
 - [Structured output pattern](../01-basics/structured-output/index.ts) — how `tool_choice: "forced"` differs from `"auto"`
+
