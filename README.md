@@ -59,7 +59,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 | [error-handling-retries](./01-basics/error-handling-retries/) | Retrying rate limits and transient failures safely |
 | [input-output-validation](./01-basics/input-output-validation/) | Validating prompts and model output at the boundary |
 
-*More patterns coming — agent loops, tool use, memory, multi-agent, reliability, observability.*
+### 02 — Tool Use
+
+| Pattern | What it demonstrates |
+|---|---|
+| [tool-use](./02-tool-use/) | Function calling: LLM decides which of your functions to call, with what args, in a multi-round loop |
+
+*More patterns coming — agent loops, memory, multi-agent, reliability, observability.*
 
 ---
 
