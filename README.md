@@ -10,7 +10,9 @@ This is a structured learning lab, not a library. Each folder is one self-contai
 
 Most agent tutorials either hide the complexity inside a framework, or throw you into production-grade code before you understand the fundamentals. This repo sits in the middle: real working code, minimal dependencies, maximum clarity.
 
-Every pattern here maps directly to something I built in [AgentFlow](https://github.com/zeeshanahmad/agentflow) — a visual AI agent workflow builder. The goal is to show the concepts naked first, then show what they look like inside a real product.
+AI Agents From Scratch is a learning lab where I document the core engineering patterns behind AI agents by building each concept from zero in TypeScript. No frameworks, no magic abstractions — just small, runnable examples that show how the pattern actually works.
+
+Later, these same patterns can be combined into larger systems such as workflow builders, support assistants, research agents, or internal automation tools.
 
 ---
 
