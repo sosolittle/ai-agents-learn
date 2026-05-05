@@ -65,7 +65,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [tool-use](./02-tool-use/) | Function calling: LLM decides which of your functions to call, with what args, in a multi-round loop |
 
-*More patterns coming — agent loops, memory, multi-agent, reliability, observability.*
+### 03 — Agent Loop
+
+| Pattern | What it demonstrates |
+|---|---|
+| [agent-loop](./03-agent-loop/) | Goal-directed agent that decides its own next steps each iteration, with a MAX_ITERATIONS circuit breaker and terminal tool pattern |
+
+*More patterns coming — memory, multi-agent, reliability, observability.*
 
 ---
 
