@@ -71,6 +71,12 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [agent-loop](./03-agent-loop/) | Goal-directed agent that decides its own next steps each iteration, with a MAX_ITERATIONS circuit breaker and terminal tool pattern |
 
+### 04 — Web Search
+
+| Pattern | What it demonstrates |
+|---|---|
+| [web-search](./04-web-search/) | Agent loop with a live web search tool: the model searches, reads results, decides whether to search again, and writes a sourced answer |
+
 *More patterns coming — memory, multi-agent, reliability, observability.*
 
 ---
