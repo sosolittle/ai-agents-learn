@@ -41,6 +41,8 @@ You need:
 - Node.js 18+
 - an OpenAI API key (get one at [platform.openai.com](https://platform.openai.com))
 
+Some examples require additional API keys. For example, `04-web-search` also needs a `TAVILY_API_KEY`. Each folder includes its own `.env.example` file showing exactly which variables are required.
+
 ---
 
 ## The series
