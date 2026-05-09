@@ -6,6 +6,16 @@ This is a structured learning lab, not a library. Each folder is one self-contai
 
 ---
 
+## Start here
+
+**New to LLM apps?**
+Start with [`01-basics/simple-llm-call`](./01-basics/simple-llm-call/) — one API call, one response, no abstractions.
+
+**Already comfortable with basic LLM calls?**
+Jump to [`02-tool-use`](./02-tool-use/) — this is the first pattern where the model can call your backend functions before it answers. It's where "chat with an LLM" becomes something closer to an actual agent.
+
+---
+
 ## Why this exists
 
 Most agent tutorials either hide the complexity inside a framework, or throw you into production-grade code before you understand the fundamentals. This repo sits in the middle: real working code, minimal dependencies, maximum clarity.
@@ -16,17 +26,15 @@ Later, these same patterns can be combined into larger systems such as workflow 
 
 ---
 
-## How to use this
+## Setup
 
-**Read first, run second.** Open the README for a folder, understand the concept, then run the code.
-
-Each example is standalone:
+**There is intentionally no root `package.json`.** Each folder is fully standalone — install and run from inside each one.
 
 ```bash
-cd 01-basics/simple-llm-call
+cd 02-tool-use
 cp .env.example .env        # add your API key
 npm install
-npx ts-node index.ts
+npm start
 ```
 
 You need:
@@ -81,6 +89,16 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 
 ---
 
-## License
+## Usage note
 
-MIT
+This repo is for learning and educational reference. Examples use mock data where possible to keep things runnable without external dependencies.
+
+Real applications built on these patterns also need: authentication, authorization, input validation, output sanitization, rate limiting, logging, monitoring, and infrastructure protections. None of that is in scope here — this is the concepts layer.
+
+---
+
+## License / Usage
+
+No open-source license has been added yet.
+
+This repository is currently shared for learning, reading, and portfolio demonstration purposes. Please do not reuse or redistribute the code as a package/library unless a license is added later.
