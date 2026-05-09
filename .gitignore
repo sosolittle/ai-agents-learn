@@ -3,6 +3,9 @@ dist/
 .env
 *.js.map
 
+# Claude Code local config
+.claude/
+
 # Plan files
 PLAN.md
 planning.md
