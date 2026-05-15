@@ -28,6 +28,17 @@ That is the pattern shift: search finds candidates; scraping turns one candidate
 
 ---
 
+## What you should understand after this
+
+- why search snippets are useful but incomplete
+- why scraping is a separate tool, not part of search
+- why the model should choose when to open a page
+- why scraped content must be bounded before entering context
+- why tool safety needs code-level enforcement, not only prompt instructions
+- why this example is a research-agent pattern, not a crawler
+
+---
+
 ## Why this exists
 
 Search results are intentionally compressed. Tavily returns useful snippets, not full documents. That is perfect for broad discovery, but weak for technical questions where the answer lives in the details:
@@ -39,6 +50,21 @@ Search results are intentionally compressed. Tavily returns useful snippets, not
 - claims that need verification against the original source
 
 The demo question asks about TC39 Temporal because the answer is not just "JavaScript gets better dates." The useful answer needs concepts like `Instant`, `PlainDate`, `ZonedDateTime`, calendar-aware arithmetic, disambiguation, and the separation between exact time and wall-clock time. A snippet can point the model at the right source. It usually cannot carry all that detail.
+
+---
+
+## Engineering decisions
+
+| Decision | Why it exists |
+|---|---|
+| Search first, scrape second | Search discovers candidate URLs; scraping turns one candidate into source material |
+| URL allowlist | Prevents the model from scraping arbitrary or hallucinated URLs |
+| URL normalization | Canonical comparison (`parsed.href`) avoids spurious allowlist misses or trivial bypasses from trailing slashes |
+| Private network blocking | Reduces SSRF-style risk in a simple, readable way |
+| No automatic redirects | Avoids redirect targets bypassing URL validation |
+| 8k character cap | Keeps one page from flooding the model context |
+| Static HTML fetch | Keeps the example lightweight and framework-free |
+| Plain-text errors | Lets the model recover and choose another source |
 
 ---
 
@@ -55,7 +81,7 @@ const MAX_SCRAPED_CHARS = 8000;
 The cut is intentional. You want the first 8k characters of readable text, which usually contains the title, intro, main claim, and the beginning of the substantive explanation. When the page is longer, the tool appends:
 
 ```text
-[truncated - page content exceeds limit]
+[truncated — page content exceeds limit]
 ```
 
 That gives the model a truthful signal: it read part of the page, not the entire thing. If it still needs more, it can search again or scrape a different URL.
@@ -139,7 +165,7 @@ Your code does not decide that the TC39 page should be opened. The model does. Y
 
 ## Safety boundaries
 
-`scrape_page` has two safety checks that are **enforced in code**, not just described in the tool description:
+`scrape_page` has three safety checks that are **enforced in code**, not just described in the tool description:
 
 **1. URL allowlist — only search results can be scraped**
 
@@ -163,7 +189,31 @@ Before opening any network connection, `validateScrapeUrl` checks the hostname a
 
 This reduces accidental SSRF-style risk if a bad URL ever made it past the allowlist.
 
+**3. No automatic redirects**
+
+Fetches use `redirect: "manual"`, so redirect responses are surfaced as a message rather than silently followed. This means a redirect target cannot bypass URL validation by hiding behind an allowed URL.
+
 **This is still not a production crawler.** Production systems would also need robots.txt compliance, rate limiting, retries, chunking, stronger citation validation, and proper source tracking. The checks here are intentionally minimal and readable — the goal is to make the safety boundary visible, not to build a hardened crawler.
+
+---
+
+## Try the safety boundary
+
+The agent can only scrape URLs returned by a prior `web_search` call. You can see the enforcement in action:
+
+```text
+→ scrape_page("http://localhost:3000")
+← Rejected: Blocked host "localhost" — internal addresses are not allowed.
+
+→ scrape_page("https://example.com/not-from-search")
+← Rejected: scrape_page can only fetch URLs returned by a prior web_search result.
+
+→ scrape_page("https://example.com/redirects-elsewhere")
+← Skipped: page redirects to https://other-site.com/. This demo does not follow
+   redirects automatically so redirect targets cannot bypass URL validation.
+```
+
+Private and internal URLs are blocked before a network connection is ever opened.
 
 ---
 
@@ -175,6 +225,7 @@ This reduces accidental SSRF-style risk if a bad URL ever made it past the allow
 - a demonstration of tool composition: discover with one tool, inspect with another
 - a practical example of turning HTML into model-readable text
 - a look at the new failure modes scraping introduces
+- a demonstration of code-level safety enforcement vs. prompt-only instructions
 
 **This example is not:**
 

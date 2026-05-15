@@ -87,7 +87,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [web-search](./04-web-search/) | Agent loop with a live web search tool: the model searches, reads results, decides whether to search again, and writes a sourced answer |
 
-*More patterns coming — memory, multi-agent, reliability, observability.*
+### 05 — Scrape Page
+
+| Pattern | What it demonstrates |
+|---|---|
+| [scrape-page](./05-scrape-page/) | Research agent with search + selective page scraping: discover candidate URLs, open one page, extract readable text, and answer with source context |
+
+*More patterns coming — memory, retrieval, multi-agent, reliability, observability.*
 
 ---
 

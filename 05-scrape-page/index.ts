@@ -61,6 +61,18 @@ async function webSearch(query: string): Promise<WebSearchOutput> {
   return { formattedText, urls };
 }
 
+// Normalizes a URL string using the WHATWG URL parser so that the allowlist
+// comparison is canonical. Returns null if the string is not a valid URL.
+// Using parsed.href means "http://example.com" and "http://example.com/"
+// resolve to the same string, preventing trivial bypass attempts.
+function normalizeUrl(rawUrl: string): string | null {
+  try {
+    return new URL(rawUrl).href;
+  } catch {
+    return null;
+  }
+}
+
 // Checks whether a URL is safe to fetch. Returns null if safe, or an error
 // message string if rejected. Blocks localhost and private IP ranges to reduce
 // accidental SSRF-style risk — this is a teaching example, not a hardened
@@ -116,12 +128,28 @@ async function scrapePage(url: string): Promise<string> {
   if (validationError) return `Rejected: ${validationError}`;
 
   try {
+    // redirect: "manual" means we receive the redirect response as-is instead
+    // of following it automatically. Production crawlers can follow redirects,
+    // but they must validate every redirect target before fetching — this demo
+    // skips that complexity and surfaces the redirect destination instead.
     const response = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (compatible; research-agent/1.0)",
       },
+      redirect: "manual",
       signal: AbortSignal.timeout(8000),
     });
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location) {
+        return `Skipped: page returned redirect status ${response.status} without a Location header.`;
+      }
+      return (
+        `Skipped: page redirects to ${location}. ` +
+        `This demo does not follow redirects automatically so redirect targets cannot bypass URL validation.`
+      );
+    }
 
     if (!response.ok) {
       return `Fetch failed: ${response.status} ${response.statusText}`;
@@ -248,6 +276,8 @@ async function runResearchAgent(question: string): Promise<string> {
   // Only URLs that came back from web_search may be passed to scrape_page.
   // This is enforced by code, not just by instruction — the agent loop checks
   // this set before calling scrapePage, and rejects any URL not in it.
+  // URLs are stored in canonical form (parsed.href) so the comparison is
+  // stable regardless of minor formatting differences.
   const allowedScrapeUrls = new Set<string>();
 
   let finalAnswer: string | null = null;
@@ -292,8 +322,13 @@ async function runResearchAgent(question: string): Promise<string> {
           console.log(`  → web_search("${args.query}")`);
           const { formattedText, urls } = await webSearch(args.query);
 
-          // Register every URL this search returned so scrape_page can use them.
-          for (const url of urls) allowedScrapeUrls.add(url);
+          // Register every URL this search returned in canonical form so
+          // scrape_page can use them. normalizeUrl filters out any malformed
+          // entries the search API might return.
+          for (const url of urls) {
+            const normalized = normalizeUrl(url);
+            if (normalized) allowedScrapeUrls.add(normalized);
+          }
 
           const preview = formattedText.length > 120 ? formattedText.slice(0, 120) + "…" : formattedText;
           console.log(`  ← ${preview}`);
@@ -304,8 +339,13 @@ async function runResearchAgent(question: string): Promise<string> {
             continue;
           }
 
+          // Normalize the requested URL before allowlist lookup so that trivial
+          // differences (trailing slash, percent-encoding) do not cause spurious
+          // rejections or bypasses.
+          const normalizedRequestedUrl = normalizeUrl(args.url);
+
           // Enforce the allowlist: the URL must have appeared in a prior web_search result.
-          if (!allowedScrapeUrls.has(args.url)) {
+          if (!normalizedRequestedUrl || !allowedScrapeUrls.has(normalizedRequestedUrl)) {
             console.log(`  → scrape_page("${args.url}") [REJECTED — not in search results]`);
             messages.push({
               role: "tool",
@@ -316,7 +356,7 @@ async function runResearchAgent(question: string): Promise<string> {
           }
 
           console.log(`  → scrape_page("${args.url}")`);
-          const content = await scrapePage(args.url);
+          const content = await scrapePage(normalizedRequestedUrl);
           const preview = content.length > 120 ? content.slice(0, 120) + "…" : content;
           console.log(`  ← ${preview}`);
           messages.push({ role: "tool", tool_call_id: call.id, content });
