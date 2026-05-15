@@ -19,7 +19,15 @@ interface TavilyResponse {
   results: TavilyResult[];
 }
 
-async function webSearch(query: string): Promise<string> {
+// webSearch returns both formatted text for the model and the raw URL list so
+// the agent loop can build an allowlist of URLs the model is actually allowed
+// to scrape (only URLs the search returned, not arbitrary ones).
+interface WebSearchOutput {
+  formattedText: string;
+  urls: string[];
+}
+
+async function webSearch(query: string): Promise<WebSearchOutput> {
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -32,24 +40,81 @@ async function webSearch(query: string): Promise<string> {
   });
 
   if (!response.ok) {
-    return `Search failed: ${response.status} ${response.statusText}`;
+    return { formattedText: `Search failed: ${response.status} ${response.statusText}`, urls: [] };
   }
 
   const data = (await response.json()) as TavilyResponse;
 
   if (!data.results?.length) {
-    return "No results found for that query.";
+    return { formattedText: "No results found for that query.", urls: [] };
   }
 
-  return data.results
+  const formattedText = data.results
     .map(
       (r, i) =>
         `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content}`
     )
     .join("\n\n---\n\n");
+
+  const urls = data.results.map((r) => r.url);
+
+  return { formattedText, urls };
+}
+
+// Checks whether a URL is safe to fetch. Returns null if safe, or an error
+// message string if rejected. Blocks localhost and private IP ranges to reduce
+// accidental SSRF-style risk — this is a teaching example, not a hardened
+// production crawler.
+function validateScrapeUrl(rawUrl: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return "Invalid URL.";
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return `Unsupported protocol "${parsed.protocol}" — only http and https are allowed.`;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+
+  // Reject well-known internal hostnames.
+  if (host === "localhost" || host === "::1" || host === "0.0.0.0") {
+    return `Blocked host "${host}" — internal addresses are not allowed.`;
+  }
+
+  // Reject the AWS metadata endpoint and loopback / private IP ranges.
+  const blockedPrefixes = [
+    "127.",        // 127.0.0.0/8  loopback
+    "10.",         // 10.0.0.0/8   private
+    "169.254.",    // 169.254.0.0/16  link-local (AWS metadata at 169.254.169.254)
+    "192.168.",    // 192.168.0.0/16  private
+  ];
+
+  for (const prefix of blockedPrefixes) {
+    if (host.startsWith(prefix)) {
+      return `Blocked host "${host}" — private/internal network addresses are not allowed.`;
+    }
+  }
+
+  // 172.16.0.0/12 covers 172.16.x.x – 172.31.x.x
+  const match172 = host.match(/^172\.(\d+)\./);
+  if (match172) {
+    const second = parseInt(match172[1], 10);
+    if (second >= 16 && second <= 31) {
+      return `Blocked host "${host}" — private/internal network addresses are not allowed.`;
+    }
+  }
+
+  return null;
 }
 
 async function scrapePage(url: string): Promise<string> {
+  // Safety check before we ever open a network connection.
+  const validationError = validateScrapeUrl(url);
+  if (validationError) return `Rejected: ${validationError}`;
+
   try {
     const response = await fetch(url, {
       headers: {
@@ -78,9 +143,13 @@ async function scrapePage(url: string): Promise<string> {
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
-    return text.length > MAX_SCRAPED_CHARS
+    // Prefix every successful scrape with its source URL so the model always
+    // knows which page the content came from, even deep inside a long context.
+    const body = text.length > MAX_SCRAPED_CHARS
       ? text.slice(0, MAX_SCRAPED_CHARS) + "\n\n[truncated — page content exceeds limit]"
       : text;
+
+    return `SOURCE_URL: ${url}\n\n${body}`;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return `Scrape error: ${msg}`;
@@ -118,7 +187,8 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
         "Fetch a URL and return the full readable text of the page. Use this after " +
         "web_search when you need the complete content of a specific page — not just the " +
         "excerpt. Useful when the search snippet is too short to answer the question. " +
-        "Avoid scraping URLs that are likely paywalled, login-required, or PDFs.",
+        "Avoid scraping URLs that are likely paywalled, login-required, or PDFs. " +
+        "Only URLs returned by a prior web_search call are accepted.",
       parameters: {
         type: "object",
         properties: {
@@ -175,6 +245,11 @@ async function runResearchAgent(question: string): Promise<string> {
     { role: "user", content: question },
   ];
 
+  // Only URLs that came back from web_search may be passed to scrape_page.
+  // This is enforced by code, not just by instruction — the agent loop checks
+  // this set before calling scrapePage, and rejects any URL not in it.
+  const allowedScrapeUrls = new Set<string>();
+
   let finalAnswer: string | null = null;
   let iteration = 0;
 
@@ -215,15 +290,31 @@ async function runResearchAgent(question: string): Promise<string> {
 
         if (call.function.name === "web_search") {
           console.log(`  → web_search("${args.query}")`);
-          const results = await webSearch(args.query);
-          const preview = results.length > 120 ? results.slice(0, 120) + "…" : results;
+          const { formattedText, urls } = await webSearch(args.query);
+
+          // Register every URL this search returned so scrape_page can use them.
+          for (const url of urls) allowedScrapeUrls.add(url);
+
+          const preview = formattedText.length > 120 ? formattedText.slice(0, 120) + "…" : formattedText;
           console.log(`  ← ${preview}`);
-          messages.push({ role: "tool", tool_call_id: call.id, content: results });
+          messages.push({ role: "tool", tool_call_id: call.id, content: formattedText });
         } else if (call.function.name === "scrape_page") {
           if (!args.url) {
             messages.push({ role: "tool", tool_call_id: call.id, content: "Missing required argument: url" });
             continue;
           }
+
+          // Enforce the allowlist: the URL must have appeared in a prior web_search result.
+          if (!allowedScrapeUrls.has(args.url)) {
+            console.log(`  → scrape_page("${args.url}") [REJECTED — not in search results]`);
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: "Rejected: scrape_page can only fetch URLs returned by a prior web_search result.",
+            });
+            continue;
+          }
+
           console.log(`  → scrape_page("${args.url}")`);
           const content = await scrapePage(args.url);
           const preview = content.length > 120 ? content.slice(0, 120) + "…" : content;

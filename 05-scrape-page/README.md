@@ -119,20 +119,51 @@ A typical run looks like this:
 Question: What exactly does the TC39 Temporal proposal change...
 
 [iteration 1]
-  -> web_search("TC39 Temporal proposal JavaScript dates time zones technical details")
-  <- [1] Temporal | URL: https://tc39.es/proposal-temporal/...
+  → web_search("TC39 Temporal proposal JavaScript dates time zones technical details")
+  ← [1] Temporal | URL: https://tc39.es/proposal-temporal/...
 
 [iteration 2]
-  -> scrape_page("https://tc39.es/proposal-temporal/docs/")
-  <- Temporal Documentation
-     Introduction
-     Temporal is a modern date/time API...
+  → scrape_page("https://tc39.es/proposal-temporal/docs/")
+  ← SOURCE_URL: https://tc39.es/proposal-temporal/docs/
+    Temporal Documentation
+    Introduction
+    Temporal is a modern date/time API...
 
 [iteration 3]
-  -> write_answer (2418 chars)
+  → write_answer (2418 chars)
 ```
 
 Your code does not decide that the TC39 page should be opened. The model does. Your code only implements the tool safely enough for the model to use.
+
+---
+
+## Safety boundaries
+
+`scrape_page` has two safety checks that are **enforced in code**, not just described in the tool description:
+
+**1. URL allowlist — only search results can be scraped**
+
+When `web_search` returns results, the agent loop registers every URL in a `Set<string>`. Before calling `scrapePage`, the loop checks that the requested URL is in that set. If the model tries to pass an arbitrary URL — one it invented, remembered from training data, or hallucinated — the tool call is rejected with:
+
+```
+Rejected: scrape_page can only fetch URLs returned by a prior web_search result.
+```
+
+This prevents the model from reaching internal or unexpected destinations without your knowledge.
+
+**2. Private/internal network block**
+
+Before opening any network connection, `validateScrapeUrl` checks the hostname and rejects:
+
+- `localhost`, `::1`, `0.0.0.0`
+- `127.0.0.0/8` (loopback)
+- `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` (private IPv4)
+- `169.254.x.x` (link-local, which includes the AWS metadata endpoint at `169.254.169.254`)
+- Any non-`http`/`https` protocol
+
+This reduces accidental SSRF-style risk if a bad URL ever made it past the allowlist.
+
+**This is still not a production crawler.** Production systems would also need robots.txt compliance, rate limiting, retries, chunking, stronger citation validation, and proper source tracking. The checks here are intentionally minimal and readable — the goal is to make the safety boundary visible, not to build a hardened crawler.
 
 ---
 
