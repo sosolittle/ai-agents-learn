@@ -1,10 +1,29 @@
 # Agent Memory
 
-> Memory in LLM agents is a state management problem. The context window is your RAM — finite, expensive, and read in full on every request.
+Most agent demos look impressive until you hit turn 20. By then, the model has quietly forgotten the user's name, their stated goal, and every decision made in the first ten minutes. No error is thrown. The model just stops knowing things it once knew.
 
-In the previous patterns, every conversation started fresh. The model had no memory of prior turns beyond what the current request contained. That's fine for one-shot tasks. For multi-turn conversations, it's a silent bug waiting to surface in production.
+Memory in LLM agents is a state management problem. The context window is your RAM — finite, expensive, and read in full on every request. How you decide what to keep, compress, evict, and persist determines whether your agent stays coherent across a long conversation or silently degrades.
 
-This pattern shows four strategies for managing conversation history: what they keep, what they lose, and when each one breaks.
+This chapter shows four memory strategies from scratch in TypeScript, without LangChain or agent frameworks, so you can see the tradeoffs directly.
+
+---
+
+## The mental model
+
+```
+Context window  =  RAM
+Full buffer     =  keep everything in RAM until it overflows
+Sliding window  =  cache eviction — oldest entry goes first
+Summary memory  =  compression — shrink old data, preserve signal
+Persistent      =  database/profile store — survives restarts
+```
+
+| Strategy | What it keeps | What it loses | Best for |
+|---|---|---|---|
+| Full buffer | Every message, always | Nothing — until the context limit throws an error | Short, bounded conversations |
+| Sliding window | The last N messages | Anything before the window — permanently, silently | Stateless commands, quick Q&A |
+| Summary memory | A compressed digest of old turns + recent messages | Exact wording and fine detail | Long conversations where early context matters |
+| Persistent memory | Extracted facts written to disk, reloaded next session | Conversation flow and context not yet extracted | Cross-session recall, user preferences |
 
 ---
 
@@ -18,7 +37,7 @@ messages.push({ role: "assistant", content: reply });
 // next request: send all of messages
 ```
 
-This works. In a 10-turn demo, it works perfectly. In a 100-turn production conversation, every request now includes the full history — and you're paying for every token of it, on every request, in addition to the new message you actually care about. Eventually you hit the model's context limit and the API returns an error.
+This works. In a 10-turn demo, it works perfectly. In a 100-turn production conversation, every request includes the full history — and you're paying for every token of it, on every request, in addition to the new message you actually care about. Eventually you hit the model's context limit and the API returns an error.
 
 The fix isn't "use a library." It's understanding the tradeoff: what do you keep, what do you evict, and what do you preserve across sessions?
 
@@ -64,30 +83,15 @@ This is the same pattern as a user profile store in any web app: don't replay th
 
 ---
 
-## What the demo reveals
+## When to use which strategy
 
-The demo runs 10 turns on one topic. Turn 1 plants a key fact:
-
-```
-"Hi! My name is Alex. I'm building a real-time dashboard in React with WebSockets."
-```
-
-Turn 10 asks for it:
-
-```
-"One last thing — what was my name, and what project was I building?"
-```
-
-Each strategy answers differently:
-
-| Strategy        | Answers turn-10 correctly? | Why |
-|----------------|---------------------------|-----|
-| full-buffer     | ✅ Yes                    | Turn 1 is still in the window |
-| sliding-window  | ❌ No                     | Turn 1 was evicted — window only holds turns 5–10 |
-| summary         | ✅ Yes                    | The fact survived compression |
-| persistent      | ✅ Yes                    | The fact was saved to disk |
-
-The sliding-window failure is the insight. Agents look great in demos. In production, that turn-1 context is gone by turn 20, and no error is thrown — the model just silently doesn't know anymore.
+| Use case | Recommended strategy |
+|---|---|
+| 5-turn support chat | Full buffer |
+| Stateless command assistant | Sliding window |
+| Long coaching or tutoring conversation | Summary memory |
+| User preferences across sessions | Persistent memory |
+| Production personal assistant | Hybrid: summary + persistent + retrieval |
 
 ---
 
@@ -123,6 +127,79 @@ Swap the strategy, get different behavior. The conversation logic doesn't change
 
 ---
 
+## What the demo reveals
+
+The demo runs 10 turns on one topic. Turn 1 plants a key fact:
+
+```
+"Hi! My name is Alex. I'm building a real-time dashboard in React with WebSockets."
+```
+
+Turn 10 asks for it:
+
+```
+"One last thing — what was my name, and what project was I building?"
+```
+
+Each strategy answers differently:
+
+| Strategy | Answers turn-10 correctly? | Why |
+|---|---|---|
+| full-buffer | Yes | Turn 1 is still in the window |
+| sliding-window | No | Turn 1 was evicted — window only holds turns 5–10 |
+| summary | Yes | The fact survived compression |
+| persistent | Yes | The fact was saved to disk |
+
+The sliding-window failure is the insight. Agents look great in demos. In production, that turn-1 context is gone by turn 20, and no error is thrown — the model just silently doesn't know anymore.
+
+---
+
+## What the output looks like
+
+**Sliding window — the silent failure:**
+
+```
+[turn 1]
+User:      Hi! My name is Alex. I'm building a real-time dashboard in React with WebSockets.
+Assistant: Nice to meet you, Alex! That sounds like a great project...
+
+[turn 10]
+User:      One last thing — what was my name, and what project was I building?
+Assistant: I'm sorry, I don't have access to information about your name or
+           project from earlier in our conversation.
+```
+
+That last response is not an exception. Not an error log. The model just doesn't know.
+
+**Summary memory — the fact survives:**
+
+```
+[summary] Compressed 8 messages → 312 chars
+
+[turn 10]
+User:      One last thing — what was my name, and what project was I building?
+Assistant: Your name is Alex, and you're building a real-time dashboard in
+           React using WebSockets.
+```
+
+The summary preserved what mattered and discarded the filler.
+
+**Persistent memory — second run loads what the first run learned:**
+
+```
+[memory] Loaded 3 fact(s) from last session:
+  - Alex is building a real-time dashboard in React with WebSockets.
+  - User prefers SWR for data fetching.
+  - Alex is exploring SSE as an alternative to WebSockets.
+
+[turn 1]
+User:      Hi! My name is Alex...
+Assistant: Welcome back, Alex! Last time we were exploring WebSocket state
+           management and comparing SSE. Want to pick up where we left off?
+```
+
+---
+
 ## The React / state management analogy
 
 If you've worked with React state, you already understand the tradeoffs:
@@ -138,6 +215,37 @@ The bugs map too. Stale closure in React = stale fact in a sliding window. Misse
 
 ---
 
+## Privacy and trust boundaries
+
+Persistent memory writes extracted facts to `memory.json`. This is fine for a local demo. Real products require more thought:
+
+- **User consent:** users should know what facts are being saved and why.
+- **Deletion controls:** users should be able to inspect and delete stored memory.
+- **Trust boundaries:** saved facts should not be treated as trusted system instructions. Memory can be wrong, stale, duplicated, or over-personalized. Injecting it into the system prompt without validation is a prompt-injection risk.
+- **Scope:** what the model extracts from a conversation is not always what the user intended to share permanently.
+
+Persistent memory is a product responsibility, not just a technical one.
+
+---
+
+## What production systems add
+
+This example keeps each strategy isolated so the mechanics are clear. Production memory systems layer several of these together and add:
+
+- user-specific storage (not a shared file)
+- memory deletion and edit controls
+- deduplication and conflict resolution across sessions
+- vector retrieval for semantic recall (find relevant facts by meaning, not recency)
+- memory scoring and importance ranking
+- expiry / TTL for stale facts
+- audit logs of what was saved and when
+- privacy controls and user-facing visibility
+- prompt-injection protection around stored memory
+
+None of that is in scope here. The goal is to make the tradeoffs visible before adding production complexity.
+
+---
+
 ## Run it
 
 ```bash
@@ -148,7 +256,7 @@ npm install
 npm start              # full-buffer — everything in context
 npm start window       # sliding-window — forgets turn 1 by turn 10
 npm start summary      # summary — compresses old turns
-npm start persist      # persistent — run it twice to see cross-session memory
+npm start persist      # persistent — run twice to see cross-session memory
 ```
 
 To see the sliding-window failure clearly, run `npm start window` and watch turn 10. The model won't know the name or project — not because it's broken, but because that information was evicted 4 turns ago.
@@ -157,44 +265,14 @@ To see persistent memory across sessions: run `npm start persist`, then run it a
 
 ---
 
-## What the output looks like
+## What you should understand after this
 
-```
-════════════════════════════════════════════════════════════
-Strategy: SLIDING-WINDOW
-════════════════════════════════════════════════════════════
-
-[turn 1]
-User:      Hi! My name is Alex. I'm building a real-time dashboard in React with WebSockets.
-Assistant: Nice to meet you, Alex! That sounds like a great project...
-
-[turn 2]
-User:      What are some good libraries for WebSocket state management in React?
-...
-
-[turn 10]
-User:      One last thing — what was my name, and what project was I building?
-Assistant: I'm sorry, I don't have access to information about your name or project
-           from earlier in our conversation.
-```
-
-That last response is the bug. Not an exception. Not an error log. The model just... doesn't know.
-
----
-
-## What this example is / is not
-
-**This example is:**
-- a clear demonstration of four memory strategies with the same interface
-- a reveal of the sliding-window failure mode that hits real production agents
-- a foundation for understanding where frameworks like LangChain's `ConversationBufferWindowMemory` come from
-
-**This example is not:**
-- a production memory system with deduplication, vector search, or semantic retrieval
-- an implementation with embeddings-based similarity for fact lookup
-- a replacement for a proper long-term memory layer in a production agent
-
-The goal is to make the tradeoffs visible. Real memory systems combine these strategies — persistent storage for facts, summaries for conversation context, and vector search for semantic recall. This example keeps each strategy isolated so the mechanics are clear.
+- Why naive message history breaks at scale
+- Why memory is a tradeoff, not a feature
+- Why sliding windows fail silently — no exception, no warning
+- How summarization compresses conversation state while preserving meaning
+- How persistent memory differs from conversation history
+- Why production memory needs privacy controls and trust boundaries
 
 ---
 

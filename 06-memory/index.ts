@@ -14,6 +14,7 @@
 import "dotenv/config";
 import OpenAI from "openai";
 import * as fs from "fs";
+import * as path from "path";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -173,7 +174,8 @@ class SummaryMemory implements Memory {
 // memory.json is written to the current working directory and gitignored.
 // ---------------------------------------------------------------------------
 
-const MEMORY_FILE = "./memory.json";
+// memory.json is written to the directory where you run npm start.
+const MEMORY_FILE = path.join(process.cwd(), "memory.json");
 
 class PersistentMemory implements Memory {
   label = "persistent";
@@ -227,10 +229,13 @@ class PersistentMemory implements Memory {
         response.choices[0].message.content ?? "{}"
       ) as { facts?: string[] };
 
-      const newFacts = parsed.facts ?? [];
+      const newFacts = (parsed.facts ?? [])
+        .map((f: string) => f.trim())
+        .filter((f: string) => f.length > 0);
+
       if (newFacts.length > 0) {
-        // Keep a rolling cap so the file never grows unbounded
-        this.facts = [...this.facts, ...newFacts].slice(-20);
+        // Deduplicate and keep a rolling cap so the file never grows unbounded
+        this.facts = Array.from(new Set([...this.facts, ...newFacts])).slice(-20);
         fs.writeFileSync(MEMORY_FILE, JSON.stringify(this.facts, null, 2));
         console.log(`  [memory] Saved ${newFacts.length} new fact(s)`);
       }
