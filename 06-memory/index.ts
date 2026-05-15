@@ -215,8 +215,10 @@ class PersistentMemory implements Memory {
         {
           role: "user",
           content:
-            `From this exchange, extract any facts worth remembering long-term ` +
-            `(user name, preferences, stated goals, key decisions). ` +
+            `From this exchange, extract only facts explicitly stated by the user: ` +
+            `their name, clearly stated preferences, stable goals, or decisions they made. ` +
+            `Do not infer preferences from assistant suggestions. ` +
+            `Do not save facts about topics merely discussed unless the user stated a goal, preference, name, or decision. ` +
             `Return JSON in exactly this format: {"facts": ["...", "..."]}. ` +
             `Return {"facts": []} if nothing is worth saving.\n\n${recentTurns}`,
         },

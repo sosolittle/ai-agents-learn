@@ -26,6 +26,7 @@ The context window is not memory. It is RAM. And like RAM, it is finite, expensi
 - Sliding window controls cost but silently forgets. No exception, no warning. The model just stops knowing things it once knew.
 - Summary memory compresses meaning but loses detail. You get "user prefers TypeScript," not the exact argument they made.
 - Persistent memory survives sessions but creates privacy and product responsibilities — user consent, deletion controls, trust boundaries.
+- Persistent memory should save explicitly stated facts, not inferred preferences. The extraction prompt matters — asking "what did the user mention?" versus "what did the user clearly state?" produces very different memory quality.
 - Real agents almost always need a hybrid: sliding window or summary for active context, persistent storage for long-term facts, and retrieval for semantic recall.
 - This is the same set of tradeoffs as React state management. Full buffer = useState([]). Sliding window = LRU cache. Summary = useMemo. Persistent = localStorage. MERN devs will recognize these bugs immediately.
 

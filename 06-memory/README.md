@@ -187,15 +187,14 @@ The summary preserved what mattered and discarded the filler.
 **Persistent memory — second run loads what the first run learned:**
 
 ```
-[memory] Loaded 3 fact(s) from last session:
+[memory] Loaded 2 fact(s) from last session:
+  - The user's name is Alex.
   - Alex is building a real-time dashboard in React with WebSockets.
-  - User prefers SWR for data fetching.
-  - Alex is exploring SSE as an alternative to WebSockets.
 
 [turn 1]
 User:      Hi! My name is Alex...
-Assistant: Welcome back, Alex! Last time we were exploring WebSocket state
-           management and comparing SSE. Want to pick up where we left off?
+Assistant: Welcome back, Alex! Last time you were working on a real-time
+           React dashboard with WebSockets. Want to pick up where we left off?
 ```
 
 ---
