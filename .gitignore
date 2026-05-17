@@ -11,3 +11,9 @@ PLAN.md
 planning.md
 discuss.md
 docs/CONTENT_GUIDELINES.md
+
+# Token optimization tooling
+CLAUDE.md
+SETUP_TOKEN_OPTIMIZATION.md
+TOKEN_OPTIMIZATION.md
+token-monitor.ps1
