@@ -92,7 +92,7 @@ Reliability isn't one feature. It's a set of boundaries the loop enforces around
 
 **Terminal tool or stop condition.** Loops need an explicit exit. Either a designated tool the model calls when it's done (`finalAnswer` in this demo), or a `finish_reason === "stop"` check. Without one, "done" is ambiguous.
 
-**Final answer validation.** If your agent must produce structured output, validate it before returning. A run that "completed" with garbage is worse than a run that failed — it gets shipped.
+**Final answer validation.** In structured-output agents, validate the final answer before returning it. This demo keeps the final answer as plain text, but production agents often validate JSON schemas, required fields, citation requirements, or grounding rules before the response is shown to the user.
 
 **Trace logging.** Every step gets an event. Recorded as it happens, printed at the end (or shipped to a log service). The trace is the artifact you actually use when something breaks.
 
@@ -102,7 +102,9 @@ Reliability isn't one feature. It's a set of boundaries the loop enforces around
 
 Same shape as earlier modules — a small product-support flow with mock tools.
 
-**User goal:** *Check if order ORD-001 has shipped. If the lookup fails, retry once. Then give me a final answer.*
+**User goal:** *Check if order ORD-001 has shipped, and tell me the tracking number.*
+
+**System policy:** Retry transient tool failures once before handing the error back to the model. Retry is a reliability boundary the loop enforces — not something the user asks for.
 
 **Mock tools:**
 
@@ -116,7 +118,7 @@ What the run looks like:
 
 1. Model decides to call `getOrderStatus("ORD-001")`.
 2. The tool fails with a transient `"Temporary database timeout"`.
-3. The loop sees `retryable: true` and retries.
+3. The loop sees `retryable: true` and retries because of the system policy.
 4. Second call succeeds — order shipped, tracking `TRK-123`.
 5. Model decides to call the terminal tool with the answer.
 6. Loop stops with `stopReason: terminal_tool`.
@@ -147,6 +149,7 @@ cp .env.example .env
 # add your OPENAI_API_KEY to .env
 
 npm install
+npm run typecheck
 npm start
 ```
 
@@ -227,7 +230,7 @@ The exact wording of the final answer will vary — the model composes it. The s
 - a full evaluation system
 - a secure agent runtime
 
-The goal is to make the boundaries visible. Real systems add layers; this keeps the concepts in one screen of code.
+The goal is to make the boundaries visible. Real systems add layers; this keeps the concepts in a small, readable example.
 
 ---
 

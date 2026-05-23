@@ -128,11 +128,26 @@ function validateToolName(name: string): string | null {
   return null;
 }
 
-function parseArgs(raw: string): Record<string, unknown> {
+// Tool arguments arrive as a JSON string from the model. Parsing can fail —
+// the model can hallucinate malformed JSON, send an array, or return null.
+// Silently coercing that to `{}` would hide a real bug in the trace, which
+// defeats the point of this module. Return a structured outcome instead so
+// the loop can record the failure and hand the error back to the model.
+type ParsedToolArgs =
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; error: string; raw: string };
+
+function parseArgs(raw: string): ParsedToolArgs {
   try {
-    return JSON.parse(raw) as Record<string, unknown>;
+    const parsed = JSON.parse(raw);
+
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, error: "Tool arguments must be a JSON object", raw };
+    }
+
+    return { ok: true, args: parsed as Record<string, unknown> };
   } catch {
-    return {};
+    return { ok: false, error: "Invalid JSON arguments from model", raw };
   }
 }
 
@@ -279,7 +294,26 @@ async function runAgent(userGoal: string): Promise<{ answer: string | null; stop
     // batch independent calls into one round — iterate them all.
     for (const call of message.tool_calls) {
       const toolName = call.function.name;
-      const args = parseArgs(call.function.arguments);
+      const parsedArgs = parseArgs(call.function.arguments);
+
+      // Malformed arguments — record the failure and send the error back to
+      // the model so it can correct itself. Don't crash, don't coerce to {}.
+      if (!parsedArgs.ok) {
+        trace.record({
+          eventType: "tool_error",
+          toolName,
+          error: parsedArgs.error,
+          meta: { iteration, toolCallId: call.id, rawArguments: parsedArgs.raw },
+        });
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: JSON.stringify({ error: parsedArgs.error }),
+        });
+        continue;
+      }
+
+      const args = parsedArgs.args;
 
       trace.record({
         eventType: "model_decision",
