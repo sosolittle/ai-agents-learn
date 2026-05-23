@@ -1,0 +1,339 @@
+// Reliability & Observability
+//
+// The agent loop from earlier modules is the skeleton. This module wraps it
+// in the things that make it debuggable when something goes wrong:
+//   - a trace recorded at every step
+//   - a max-iterations circuit breaker
+//   - an allow-list of tools the model can call
+//   - argument validation at the dispatcher boundary
+//   - a per-call timeout
+//   - a retry policy for transient errors
+//   - an explicit terminal tool and stop reason
+//
+// The model is OpenAI's function-calling API. The retry behavior is exercised
+// by getOrderStatus, which is rigged to fail on its first call with a
+// transient error and succeed on the second. The retry happens *inside the
+// loop* — the model never sees the transient failure, only the successful
+// result on retry. That's the whole point of a retry policy: shield the model
+// from noise the system can recover from on its own.
+
+import "dotenv/config";
+import OpenAI from "openai";
+
+import { Trace, newRunId, preview } from "./trace";
+import { ALLOWED_TOOLS, resetToolState, runTool } from "./tools";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ---------------------------------------------------------------------------
+// Boundaries — the knobs that turn an open-ended loop into a bounded system.
+// ---------------------------------------------------------------------------
+
+const MAX_ITERATIONS = 10;
+const TOOL_TIMEOUT_MS = 5000;
+const MAX_RETRIES_PER_TOOL = 1;
+const MODEL = "gpt-4o-mini";
+
+// ---------------------------------------------------------------------------
+// Tool definitions — what the model is allowed to ask for.
+// ---------------------------------------------------------------------------
+
+const tools: OpenAI.Chat.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "getOrderStatus",
+      description: "Look up the current status of a customer order by order ID.",
+      parameters: {
+        type: "object",
+        properties: {
+          orderId: {
+            type: "string",
+            description: "Order ID, format: ORD-XXX — e.g. ORD-001",
+          },
+        },
+        required: ["orderId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "checkInventory",
+      description: "Check the stock level for a product by its name.",
+      parameters: {
+        type: "object",
+        properties: {
+          productName: {
+            type: "string",
+            description: "Exact product name — e.g. 'Wireless Headphones'",
+          },
+        },
+        required: ["productName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "finalAnswer",
+      description:
+        "Return the final answer to the user. Call this once you have gathered " +
+        "enough information to fully answer the question. Calling this ends the run.",
+      parameters: {
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description: "The complete final answer for the user.",
+          },
+        },
+        required: ["content"],
+      },
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Timeout wrapper. A tool that never returns shouldn't be able to wedge the
+// whole agent. Promise.race against a timer gives every call a hard ceiling.
+// ---------------------------------------------------------------------------
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      }
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Argument validation. The dispatcher in tools.ts also checks shape, but the
+// loop should reject tools not on the allow-list before dispatch. The model
+// can hallucinate names; the loop catches that.
+// ---------------------------------------------------------------------------
+
+function validateToolName(name: string): string | null {
+  if (!ALLOWED_TOOLS.has(name)) {
+    return `Tool "${name}" is not allowed. Allowed: ${[...ALLOWED_TOOLS].join(", ")}.`;
+  }
+  return null;
+}
+
+function parseArgs(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// runToolWithRetries — runs one tool, applies timeout, retries transient
+// errors up to MAX_RETRIES_PER_TOOL. Returns the final outcome (success or
+// the last error). Every attempt and retry is recorded in the trace.
+// ---------------------------------------------------------------------------
+
+interface ResolvedResult {
+  ok: boolean;
+  payload: string; // What we hand back to the model as the tool result.
+  value?: unknown;
+}
+
+async function runToolWithRetries(
+  trace: Trace,
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<ResolvedResult> {
+  let attempt = 0;
+
+  while (true) {
+    attempt++;
+
+    trace.record({
+      eventType: "tool_call",
+      toolName,
+      arguments: args,
+      meta: { attempt },
+    });
+
+    const startedAt = Date.now();
+    try {
+      const outcome = await withTimeout(runTool(toolName, args), TOOL_TIMEOUT_MS, toolName);
+      const durationMs = Date.now() - startedAt;
+
+      if (outcome.ok) {
+        trace.record({
+          eventType: "tool_result",
+          toolName,
+          resultPreview: preview(outcome.value),
+          durationMs,
+        });
+        return { ok: true, payload: JSON.stringify(outcome.value), value: outcome.value };
+      }
+
+      trace.record({
+        eventType: "tool_error",
+        toolName,
+        error: outcome.error,
+        durationMs,
+        meta: { retryable: outcome.retryable, attempt },
+      });
+
+      // Permanent error or out of retries — hand the error back to the model
+      // so it can decide what to do (apologize, try a different tool, etc).
+      if (!outcome.retryable || attempt > MAX_RETRIES_PER_TOOL) {
+        return { ok: false, payload: JSON.stringify({ error: outcome.error }) };
+      }
+
+      // Retry. Recorded explicitly so silent retries don't hide cost growth.
+      trace.record({
+        eventType: "retry",
+        toolName,
+        meta: { nextAttempt: attempt + 1, reason: outcome.error },
+      });
+    } catch (err) {
+      const durationMs = Date.now() - startedAt;
+      const message = err instanceof Error ? err.message : String(err);
+
+      trace.record({ eventType: "tool_error", toolName, error: message, durationMs });
+
+      if (attempt > MAX_RETRIES_PER_TOOL) {
+        return { ok: false, payload: JSON.stringify({ error: message }) };
+      }
+
+      trace.record({
+        eventType: "retry",
+        toolName,
+        meta: { nextAttempt: attempt + 1, reason: message },
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The loop.
+// ---------------------------------------------------------------------------
+
+async function runAgent(userGoal: string): Promise<{ answer: string | null; stopReason: string }> {
+  const trace = new Trace(newRunId());
+  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    {
+      role: "system",
+      content:
+        "You are a customer support agent. Use the tools to look up real " +
+        "information before answering. When you have enough information, call " +
+        "finalAnswer with the complete reply for the user.",
+    },
+    { role: "user", content: userGoal },
+  ];
+
+  console.log(`Goal: ${userGoal}`);
+
+  let iteration = 0;
+
+  while (true) {
+    iteration++;
+
+    if (iteration > MAX_ITERATIONS) {
+      const stopReason = "max_iterations_exceeded";
+      trace.record({ eventType: "stop", stopReason });
+      trace.print();
+      return { answer: null, stopReason };
+    }
+
+    const response = await client.chat.completions.create({
+      model: MODEL,
+      messages,
+      tools,
+      tool_choice: "auto",
+    });
+
+    const choice = response.choices[0];
+    const message = choice.message;
+    messages.push(message);
+
+    // Model replied without calling a tool. Treat as a final answer.
+    if (choice.finish_reason === "stop" || !message.tool_calls?.length) {
+      const content = message.content ?? "";
+      const stopReason = "model_stop";
+      trace.record({
+        eventType: "model_decision",
+        meta: { iteration, kind: "direct_reply" },
+      });
+      trace.record({ eventType: "final_answer", resultPreview: preview(content) });
+      trace.record({ eventType: "stop", stopReason });
+      trace.print();
+      return { answer: content, stopReason };
+    }
+
+    // Model asked for one or more tool calls. The function-calling API can
+    // batch independent calls into one round — iterate them all.
+    for (const call of message.tool_calls) {
+      const toolName = call.function.name;
+      const args = parseArgs(call.function.arguments);
+
+      trace.record({
+        eventType: "model_decision",
+        toolName,
+        arguments: args,
+        meta: { iteration, toolCallId: call.id },
+      });
+
+      const validationError = validateToolName(toolName);
+      if (validationError) {
+        trace.record({ eventType: "tool_error", toolName, error: validationError });
+        messages.push({
+          role: "tool",
+          tool_call_id: call.id,
+          content: JSON.stringify({ error: validationError }),
+        });
+        continue;
+      }
+
+      const result = await runToolWithRetries(trace, toolName, args);
+
+      // Terminal tool — explicit completion. Push the result for a valid
+      // message history, then exit.
+      if (toolName === "finalAnswer" && result.ok) {
+        const content = (result.value as { final: string }).final;
+        messages.push({ role: "tool", tool_call_id: call.id, content: result.payload });
+        const stopReason = "terminal_tool";
+        trace.record({ eventType: "final_answer", resultPreview: preview(content) });
+        trace.record({ eventType: "stop", stopReason });
+        trace.print();
+        return { answer: content, stopReason };
+      }
+
+      messages.push({ role: "tool", tool_call_id: call.id, content: result.payload });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Demo
+// ---------------------------------------------------------------------------
+
+async function main() {
+  resetToolState();
+  const result = await runAgent(
+    "Check if order ORD-001 has shipped, and tell me the tracking number."
+  );
+
+  console.log("─".repeat(60));
+  console.log(`stopReason: ${result.stopReason}`);
+  console.log(`answer: ${result.answer ?? "(none)"}`);
+}
+
+main().catch((err) => {
+  console.error("Agent crashed:", err);
+  process.exit(1);
+});

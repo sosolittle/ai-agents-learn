@@ -99,7 +99,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [memory](./06-memory/) | Four agent memory strategies: full buffer, sliding window, summary compression, and persistent facts across sessions |
 
-*More patterns coming — multi-agent, reliability, observability.*
+### 07 — Reliability & Observability
+
+| Pattern | What it demonstrates |
+|---|---|
+| [reliability-observability](./07-reliability-observability/) | Step-level traces, tool errors, retries, max iterations, and debugging visibility for agent loops |
+
+*More patterns coming — multi-agent and evaluation.*
 
 ---
 
