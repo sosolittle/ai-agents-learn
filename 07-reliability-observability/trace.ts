@@ -48,7 +48,7 @@ export class Trace {
   }
 
   all(): TraceEvent[] {
-    return this.events;
+    return [...this.events];
   }
 
   // Pretty-print the run. The point of a trace isn't to look nice — it's so a
