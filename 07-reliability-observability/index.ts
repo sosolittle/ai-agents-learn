@@ -278,7 +278,7 @@ async function runAgent(userGoal: string): Promise<{ answer: string | null; stop
 
     // Model replied without calling a tool. Treat as a final answer.
     if (choice.finish_reason === "stop" || !message.tool_calls?.length) {
-      const content = message.content ?? "";
+      const content = message.content ?? null;
       const stopReason = "model_stop";
       trace.record({
         eventType: "model_decision",
@@ -292,6 +292,10 @@ async function runAgent(userGoal: string): Promise<{ answer: string | null; stop
 
     // Model asked for one or more tool calls. The function-calling API can
     // batch independent calls into one round — iterate them all.
+    //
+    // Calls run sequentially, not in parallel (no Promise.all). Parallel
+    // execution would interleave trace events from concurrent calls with no
+    // guaranteed ordering, making the trace harder to read and reason about.
     for (const call of message.tool_calls) {
       const toolName = call.function.name;
       const parsedArgs = parseArgs(call.function.arguments);
@@ -299,6 +303,13 @@ async function runAgent(userGoal: string): Promise<{ answer: string | null; stop
       // Malformed arguments — record the failure and send the error back to
       // the model so it can correct itself. Don't crash, don't coerce to {}.
       if (!parsedArgs.ok) {
+        // model_decision must always be recorded before tool_error so the trace
+        // tells a coherent story: the model asked for something, then it failed.
+        trace.record({
+          eventType: "model_decision",
+          toolName,
+          meta: { iteration, toolCallId: call.id, parseError: parsedArgs.error },
+        });
         trace.record({
           eventType: "tool_error",
           toolName,
