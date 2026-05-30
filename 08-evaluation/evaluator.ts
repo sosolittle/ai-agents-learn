@@ -78,6 +78,18 @@ export function evaluateCase(testCase: EvalCase, result: AgentResult): EvalRepor
     });
   }
 
+  const anyTerms = testCase.expectedAnswerContainsAny ?? [];
+  if (anyTerms.length > 0) {
+    const passed = anyTerms.some((term) => answer.includes(term.toLowerCase()));
+    checks.push({
+      name: "answer contains any expected term",
+      passed,
+      message: passed
+        ? `final answer contained at least one of: ${anyTerms.join(", ")}`
+        : `final answer did not contain any of: ${anyTerms.join(", ")}`,
+    });
+  }
+
   for (const term of testCase.answerMustNotContain ?? []) {
     const passed = !answer.includes(term.toLowerCase());
     checks.push({
