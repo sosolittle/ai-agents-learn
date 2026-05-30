@@ -105,7 +105,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [reliability-observability](./07-reliability-observability/) | Step-level traces, tool errors, retries, max iterations, and debugging visibility for agent loops |
 
-*More patterns coming — multi-agent and evaluation.*
+### 08 — Evaluation
+
+| Pattern | What it demonstrates |
+|---|---|
+| [evaluation](./08-evaluation/) | Eval harness for tool-calling agents: check final answers, tool selection, arguments, forbidden tools, iteration limits, grounding, and optional LLM judge feedback |
+
+*More patterns coming — multi-agent.*
 
 ---
 
