@@ -111,7 +111,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [evaluation](./08-evaluation/) | Eval harness for tool-calling agents: check final answers, tool selection, arguments, forbidden tools, iteration limits, grounding, and optional LLM judge feedback |
 
-*More patterns coming — multi-agent.*
+### 09 — Multi-Agent
+
+| Pattern | What it demonstrates |
+|---|---|
+| [multi-agent](./09-multi-agent/) | Coordinating multiple specialized agents: planner, worker, and reviewer. Shows role boundaries, structured handoffs, shared context, and review before final output. |
+
+*More patterns coming — planning, routing, and human approval.*
 
 ---
 

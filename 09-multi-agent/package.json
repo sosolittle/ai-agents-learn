@@ -1,0 +1,19 @@
+{
+  "name": "09-multi-agent",
+  "version": "1.0.0",
+  "description": "Multi-agent collaboration from scratch: planner, worker, reviewer",
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "openai": "^4.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}
