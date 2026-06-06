@@ -3,7 +3,7 @@ import "dotenv/config";
 import { runPlannerAgent } from "./agents/plannerAgent.js";
 import { runReviewerAgent } from "./agents/reviewerAgent.js";
 import { runWorkerAgent } from "./agents/workerAgent.js";
-import type { AgentStep } from "./types.js";
+import type { AgentStep, MultiAgentRunResult } from "./types.js";
 import { prettyJson, printSection } from "./utils.js";
 
 // The example goal. This is the single input that flows through every stage.
@@ -54,8 +54,18 @@ async function main(): Promise<void> {
     console.log(prettyJson(review));
   }
 
+  // The whole run can be represented as one structured artifact: the goal plus
+  // every stage's output. This is the object you would log, store, or evaluate.
+  const result: MultiAgentRunResult = {
+    goal: USER_GOAL,
+    plan,
+    draft,
+    review,
+    steps,
+  };
+
   printSection("Handoffs");
-  for (const step of steps) {
+  for (const step of result.steps) {
     console.log(`- ${step.agent}: ${step.summary}`);
   }
 

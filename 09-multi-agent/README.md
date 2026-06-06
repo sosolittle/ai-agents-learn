@@ -158,6 +158,7 @@ This example **is**:
 - a minimal multi-agent handoff pattern
 - a role-separation demo
 - a way to understand planner-worker-reviewer architecture
+- intentionally limited to one pass through planner → worker → reviewer; no recursive repair loop in v1
 
 This example **is not**:
 
@@ -166,6 +167,7 @@ This example **is not**:
 - an autonomous team of agents
 - a replacement for workflow orchestration
 - a guarantee of correctness
+- a self-correcting recursive agent loop
 
 ## Production notes
 
