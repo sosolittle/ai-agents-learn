@@ -1,11 +1,8 @@
 import "dotenv/config";
-import OpenAI from "openai";
 
-import type { PlannerOutput, ReviewResult, WorkerDraft } from "../types.js";
+import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
+import { ReviewResultSchema, type PlannerOutput, type ReviewResult, type WorkerDraft } from "../types.js";
 import { prettyJson, safeJsonParse } from "../utils.js";
-
-const MODEL = "gpt-4o-mini";
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // The Reviewer Agent checks the worker draft against the goal and the plan. It
 // does not write the final answer either — it only judges. Separating "produce"
@@ -21,12 +18,12 @@ No extra commentary.
 
 Return a JSON object with exactly these fields:
 {
-  "passed": boolean,
   "missing_items": string[],
   "risky_claims": string[],
   "improvement_notes": string[],
   "final_recommendation": "approve" | "revise"
-}`;
+}
+Default to revise unless every acceptance criterion in the plan is explicitly satisfied by the draft.`;
 
 export async function runReviewerAgent(
   goal: string,
@@ -43,8 +40,10 @@ export async function runReviewerAgent(
     prettyJson(draft),
   ].join("\n");
 
-  const response = await client.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: MODEL,
+    temperature: TEMPERATURE,
+    max_tokens: MAX_TOKENS,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -53,5 +52,5 @@ export async function runReviewerAgent(
   });
 
   const raw = response.choices[0].message.content ?? "";
-  return safeJsonParse<ReviewResult>(raw, "Reviewer Agent");
+  return safeJsonParse<ReviewResult>(raw, "Reviewer Agent", ReviewResultSchema);
 }

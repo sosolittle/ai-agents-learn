@@ -1,17 +1,21 @@
 // Small helpers shared across the agents.
 //
-// The JSON parsing here is intentionally defensive but minimal. A production
-// system would validate each agent's output against a schema (for example with
-// Zod or JSON Schema) so that a malformed handoff fails loudly at the boundary.
-// This module keeps dependencies minimal, so we do a narrow check: parse the
-// JSON, confirm it is an object, and throw a clear error otherwise.
+// The JSON parsing here validates each agent's output against a Zod schema so
+// that a malformed handoff fails loudly at the boundary. Parse the JSON, then
+// confirm its shape matches the contract; otherwise throw a clear error.
+
+import { z } from "zod";
 
 /**
- * Parse a model response that is expected to be a JSON object.
- * Throws a clear, labelled error if the text is not valid JSON or is not an
- * object, so a bad handoff between agents is easy to spot.
+ * Parse a model response that is expected to match a Zod schema.
+ * Throws a clear, labelled error if the text is not valid JSON or does not
+ * match the schema, so a bad handoff between agents is easy to spot.
  */
-export function safeJsonParse<T>(raw: string, agentName: string): T {
+export function safeJsonParse<T>(
+  raw: string,
+  agentName: string,
+  schema: z.ZodType<T>
+): T {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -21,15 +25,14 @@ export function safeJsonParse<T>(raw: string, agentName: string): T {
     );
   }
 
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  const result = schema.safeParse(parsed);
+  if (!result.success) {
     throw new Error(
-      `${agentName} returned JSON that is not an object. Got:\n${preview(raw, 200)}`
+      `${agentName} returned invalid shape.\n${result.error.toString()}\nRaw:\n${preview(raw, 200)}`
     );
   }
 
-  // We trust the shape here for teaching purposes. In production this is where
-  // a schema validator would confirm every field exists and has the right type.
-  return parsed as T;
+  return result.data;
 }
 
 /** Print a labelled section header so each stage is easy to read in the console. */

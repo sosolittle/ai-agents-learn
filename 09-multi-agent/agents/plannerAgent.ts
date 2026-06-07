@@ -1,11 +1,8 @@
 import "dotenv/config";
-import OpenAI from "openai";
 
-import type { PlannerOutput } from "../types.js";
+import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
+import { PlannerOutputSchema, type PlannerOutput } from "../types.js";
 import { safeJsonParse } from "../utils.js";
-
-const MODEL = "gpt-4o-mini";
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // The Planner Agent has one job: turn a fuzzy user goal into a structured plan.
 // It does not write the final answer and it does not implement anything. Its
@@ -29,8 +26,10 @@ Return a JSON object with exactly these fields:
 }`;
 
 export async function runPlannerAgent(goal: string): Promise<PlannerOutput> {
-  const response = await client.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: MODEL,
+    temperature: TEMPERATURE,
+    max_tokens: MAX_TOKENS,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -39,5 +38,5 @@ export async function runPlannerAgent(goal: string): Promise<PlannerOutput> {
   });
 
   const raw = response.choices[0].message.content ?? "";
-  return safeJsonParse<PlannerOutput>(raw, "Planner Agent");
+  return safeJsonParse<PlannerOutput>(raw, "Planner Agent", PlannerOutputSchema);
 }

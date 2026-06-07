@@ -1,12 +1,9 @@
 import "dotenv/config";
-import OpenAI from "openai";
 
-import { knowledgeAsText } from "../knowledge.js";
-import type { PlannerOutput, WorkerDraft } from "../types.js";
+import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
+import { knowledge } from "../knowledge.js";
+import { WorkerDraftSchema, type PlannerOutput, type WorkerDraft } from "../types.js";
 import { prettyJson, safeJsonParse } from "../utils.js";
-
-const MODEL = "gpt-4o-mini";
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // The Worker Agent receives the plan plus local knowledge and produces a
 // grounded MVP draft. It is told to stay within the plan and prefer practical
@@ -40,12 +37,14 @@ export async function runWorkerAgent(
     "Planner output (the plan you must stay within):",
     prettyJson(plan),
     "",
-    "Local engineering knowledge you should ground your draft in:",
-    knowledgeAsText(),
+    "Local engineering knowledge (JSON):",
+    JSON.stringify(knowledge, null, 2),
   ].join("\n");
 
-  const response = await client.chat.completions.create({
+  const response = await getClient().chat.completions.create({
     model: MODEL,
+    temperature: TEMPERATURE,
+    max_tokens: MAX_TOKENS,
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -54,5 +53,5 @@ export async function runWorkerAgent(
   });
 
   const raw = response.choices[0].message.content ?? "";
-  return safeJsonParse<WorkerDraft>(raw, "Worker Agent");
+  return safeJsonParse<WorkerDraft>(raw, "Worker Agent", WorkerDraftSchema);
 }

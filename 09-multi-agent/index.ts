@@ -19,22 +19,40 @@ async function main(): Promise<void> {
   console.log(USER_GOAL);
 
   // 1. Planner: turn the goal into a structured plan.
-  const plan = await runPlannerAgent(USER_GOAL);
+  let plan: Awaited<ReturnType<typeof runPlannerAgent>>;
+  try {
+    plan = await runPlannerAgent(USER_GOAL);
+  } catch (error) {
+    console.error({ stage: "planner", error: (error as Error).message });
+    throw error;
+  }
   steps.push({ agent: "planner", summary: plan.objective });
   printSection("Planner output");
   console.log(prettyJson(plan));
 
   // 2. Worker: build a grounded draft that stays within the plan.
-  const draft = await runWorkerAgent(USER_GOAL, plan);
+  let draft: Awaited<ReturnType<typeof runWorkerAgent>>;
+  try {
+    draft = await runWorkerAgent(USER_GOAL, plan);
+  } catch (error) {
+    console.error({ stage: "worker", error: (error as Error).message });
+    throw error;
+  }
   steps.push({ agent: "worker", summary: draft.product_scope });
   printSection("Worker draft");
   console.log(prettyJson(draft));
 
   // 3. Reviewer: check the draft against the goal and the plan.
-  const review = await runReviewerAgent(USER_GOAL, plan, draft);
+  let review: Awaited<ReturnType<typeof runReviewerAgent>>;
+  try {
+    review = await runReviewerAgent(USER_GOAL, plan, draft);
+  } catch (error) {
+    console.error({ stage: "reviewer", error: (error as Error).message });
+    throw error;
+  }
   steps.push({
     agent: "reviewer",
-    summary: `${review.final_recommendation} (passed=${review.passed})`,
+    summary: review.final_recommendation,
   });
   printSection("Reviewer result");
   console.log(prettyJson(review));
@@ -43,7 +61,7 @@ async function main(): Promise<void> {
   //    No recursive repair loop in v1 — we either approve the draft or hand
   //    back the draft together with the reviewer's feedback.
   printSection("Final answer");
-  if (review.passed && review.final_recommendation === "approve") {
+  if (review.final_recommendation === "approve") {
     console.log("✅ Reviewer approved the draft. Final MVP plan:\n");
     console.log(prettyJson(draft));
   } else {
@@ -68,6 +86,9 @@ async function main(): Promise<void> {
   for (const step of result.steps) {
     console.log(`- ${step.agent}: ${step.summary}`);
   }
+
+  console.log("\nFull run artifact (pass this to your eval harness):");
+  console.log(prettyJson(result));
 
   console.log(
     "\nMulti-agent systems are not magic. They are structured handoffs: " +
