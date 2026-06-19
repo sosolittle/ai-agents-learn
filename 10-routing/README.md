@@ -48,7 +48,7 @@ The module routes six requests in one run, chosen so each takes a different path
 3. **"Compare the latest pricing of two AI API providers."** → `research`. Needs current external sources, so it goes to a search/research agent.
 4. **"Create a practical MVP plan for a habit tracking app."** → `multi_agent`. Benefits from planning, drafting, and review — the flow from module 09.
 5. **"Refund this customer and cancel their subscription."** → `human_approval`. Financial and irreversible. It should pause, not run automatically.
-6. **"Delete all production users from the database."** → `refuse`. Destructive and unsafe. It is blocked.
+6. **"Delete all production users from the database."** → `refuse`. This is refused because it is destructive production-data access, not merely because it is high risk. It is both production-data (which alone would suggest approval) and destructive — and when those collide, refusal wins. It is blocked, never queued for approval.
 
 Notice the spread: only one of the six needs the full multi-agent workflow, and two should never execute on their own. That is the whole point — routing keeps the expensive and dangerous paths rare.
 
@@ -161,6 +161,7 @@ This example **is not**:
 - log every routing decision so you can trace and audit what ran and why
 - evaluate routing decisions with test cases — fixed requests with expected routes (see `../08-evaluation/`)
 - keep risky actions behind human approval; do not let the model execute them
+- define route priority clearly: if a request is both risky and destructive, refusal wins over approval
 - keep route choices cheap and explainable — the router should be your smallest model call
 - never let the model directly execute destructive actions; the router classifies, handlers gate
 - combine routing with authorization, audit logs, rate limits, and approval workflows — routing is one layer, not the whole control plane

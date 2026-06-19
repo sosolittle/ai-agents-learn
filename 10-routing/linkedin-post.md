@@ -2,7 +2,7 @@ After building a multi-agent flow, I noticed another mistake: not every request 
 
 My last post was about separating agents into planner, worker, and reviewer. That fixed one problem. It also exposed the next one.
 
-If every request runs through the full agent stack, the system gets slower, more expensive, and harder to debug. A user asking "what's an API?" was going through the same path as "create an MVP plan" and "refund this customer." Same machinery. Wildly different cost and risk.
+If every request runs through the full agent stack, the system gets slower, more expensive, and harder to debug. In a naive setup, a user asking "what's an API?" can end up going through the same path as "create an MVP plan" or "refund this customer." Same machinery. Wildly different cost and risk.
 
 The fix wasn't more agents. It was a router in front of them.
 

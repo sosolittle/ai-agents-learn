@@ -24,6 +24,8 @@ Choose the cheapest safe route. Do not over-route.
 Do not route to "multi_agent" just because the task sounds complex.
 Use "human_approval" for irreversible, financial, account, production-data, or externally visible actions.
 Use "refuse" for destructive or unsafe requests.
+If a request matches both "human_approval" and "refuse", choose "refuse".
+Destructive production-data actions must be refused, not approved.
 
 Routes:
 - "direct_answer": a simple explanation or general knowledge answer, no tools needed.
