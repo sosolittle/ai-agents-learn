@@ -117,7 +117,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [multi-agent](./09-multi-agent/) | Coordinating multiple specialized agents: planner, worker, and reviewer. Shows role boundaries, structured handoffs, shared context, and review before final output. |
 
-*More patterns coming — planning, routing, and human approval.*
+### 10 — Routing
+
+| Pattern | What it demonstrates |
+|---|---|
+| [routing](./10-routing/) | Router agent that chooses the smallest safe execution path: direct answer, tool use, research, multi-agent workflow, human approval, or refusal. |
+
+*More patterns coming — human approval, planning, and workflow orchestration.*
 
 ---
 
