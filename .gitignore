@@ -3,6 +3,9 @@ dist/
 .env
 *.js.map
 
+# JetBrains IDE config
+.idea/
+
 # Claude Code local config
 .claude/
 
