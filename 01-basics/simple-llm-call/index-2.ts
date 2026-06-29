@@ -8,7 +8,8 @@ import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
 const openaiClient: OpenAI = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
+    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: process.env.OPENAI_BASE_URL
 })
 
 const anthropicClient: Anthropic = new Anthropic({
@@ -51,9 +52,48 @@ async function callAnthropic() {
     const response = await anthropicClient.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 1024,
-        messages: []
+        messages: [{
+            role: "user",
+            content: "用两句话解释什么是大语言模型（LLM），对象是一个从没接触过AI的程序员。"
+        }]
     })
+
+    const textBlock = response.content.find((block) => block.type === "text")
+
+    const reply = textBlock && "text" in textBlock ? textBlock.text : "(无回复)";
+
+    console.log("Claude 的回复：\n");
+    console.log(reply);
+
+    console.log("\n--- Token 使用情况 ---");
+    console.log("输入 tokens:  ", response.usage.input_tokens);
+    console.log("输出 tokens:  ", response.usage?.output_tokens);
+    console.log("停止原因:     ", response.stop_reason);
 }
+
+async function main() {
+    // const result = await callAnthropic()
+    const result = await callOpenAI()
+}
+
+main().catch(console.error)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
