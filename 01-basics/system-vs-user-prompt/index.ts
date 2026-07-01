@@ -65,6 +65,7 @@ import "dotenv/config";
 // 这里保留原写法，是为了展示 dotenv 的最简导入形式。
 
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 // 导入 OpenAI 官方 TypeScript SDK
 // SDK 会帮我们处理 HTTP 请求、鉴权 Header、JSON 序列化和响应解析
 //
@@ -79,7 +80,7 @@ import OpenAI from "openai";
 // 客户端 client 是后续所有 OpenAI API 调用的入口
 // 可以把它理解成一个已经配置好 API Key 的"请求工具"
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // new OpenAI(...) 创建一个 OpenAI SDK 实例
 //
 // apiKey: process.env.OPENAI_API_KEY
