@@ -111,7 +111,7 @@ const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 // 它通常包含任务、问题、输入数据或用户当前的请求
 
 const userQuestion =
-  "Explain what an API rate limit is in one short paragraph.";
+  "用一小段话解释什么是 API 速率限制";
 // 这里故意让 user prompt 保持不变
 //
 // 为什么？
@@ -168,7 +168,7 @@ const examples = [
   // 程序后面会循环这些用例，把同一个 user prompt 分别发给模型
 
   {
-    label: "No system prompt",
+    label: "无系统提示词",
     // label 只是给终端输出看的标题，方便你知道当前是哪一种情况
 
     systemPrompt: null,
@@ -184,9 +184,9 @@ const examples = [
     // 做 prompt 调试时，经常应该保留一个 baseline。
   },
   {
-    label: "Backend engineering tutor",
+    label: "后端开发工程师",
     systemPrompt:
-      "You are a concise backend engineering tutor. Explain with practical engineering language.",
+      "你是一位简洁高效的后端开发工程师，请用贴近实际工程开发的语言进行讲解。",
     // 这个 system prompt 要求模型扮演"后端工程导师"
     //
     // 预期效果：
@@ -199,9 +199,9 @@ const examples = [
     // 如果换成法务助手，可能会解释服务条款和公平使用政策。
   },
   {
-    label: "JSON-only API responder",
+    label: "只返回 JSON 格式的对象",
     systemPrompt:
-      "You are a JSON-only API responder. Return an object with keys: concept, explanation, risk, mitigation.",
+      "你是一个只返回 JSON 格式的 API 响应助手，请返回一个包含以下键的对象：concept、explanation、risk、mitigation。",
     // 这个 system prompt 要求模型只返回 JSON 风格的对象
     //
     // 预期效果：
@@ -228,9 +228,9 @@ const examples = [
     //   模型输出"看起来像 JSON"，不等于它一定是合法、完整、符合业务规则的 JSON。
   },
   {
-    label: "Customer support assistant",
+    label: "技术解答客服助手",
     systemPrompt:
-      "You are a customer support assistant. Explain this to a non-technical user.",
+      "你是一个优秀且专业的技术解答客服助手，请为非专业用户解释这个问题",
     // 这个 system prompt 要求模型扮演"客服助手"
     //
     // 预期效果：
