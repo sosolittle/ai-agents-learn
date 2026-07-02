@@ -96,6 +96,13 @@ import client from "./src/openai-charles-client";
 // 所以如果你运行后看到 401、Unauthorized、API key missing 之类错误，
 // 第一反应应该是检查 .env 和环境变量，而不是怀疑 prompt 写错了。
 
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+// 默认使用 OpenAI 的学习示例模型
+//
+// 如果你把 OPENAI_BASE_URL 指向 OpenAI 兼容接口，比如 DeepSeek，
+// 需要在 .env 里把 OPENAI_MODEL 改成该接口支持的模型名：
+//   OPENAI_MODEL=deepseek-v4-flash
+
 // ============================================================
 //  第三部分：准备用户问题
 // ============================================================
@@ -379,15 +386,15 @@ async function main() {
       // 生产环境要注意：
       //   每多一个用例，就多一次成本和延迟。
 
-      model: "gpt-4o-mini",
+      model: model,
       // 指定模型
       // gpt-4o-mini 成本较低、速度较快，适合学习示例
       //
-      // 这里故意把模型固定住。
+      // 默认情况下仍然保持同一个模型。
       // 如果模型也变了，输出差异可能来自模型能力，
       // 而不一定来自 system prompt。
 
-      max_tokens: 220,
+      max_completion_tokens: 1024,
       // 限制模型最多生成 220 个输出 token
       //
       // 这里的回复都比较短，所以 220 已经足够
