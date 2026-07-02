@@ -11,12 +11,8 @@ console.log("[Charles Debug] CHARLES_PROXY =", proxyUrl);
 console.log("[Charles Debug] OPENAI_BASE_URL =", process.env.OPENAI_BASE_URL);
 
 const charlesFetch: typeof globalThis.fetch = async (input, init) => {
-    const url =
-        typeof input === "string"
-            ? input
-            : input instanceof URL
-                ? input.toString()
-                : input.url;
+
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
     console.log("[Charles Debug] request url =", url);
 
