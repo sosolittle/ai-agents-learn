@@ -1,3 +1,12 @@
+// ============================================================
+//  第八章 trace：供评测读取的执行轨迹
+//
+//  学习目标：
+//  1. 记录 agent 每一步行为，给 evaluator 提供证据
+//  2. 支持 usedTool/getToolCalls 这类评测辅助查询
+//  3. 把长结果裁剪成 preview，避免评测日志过大
+// ============================================================
+
 export type EventType =
   | "model_decision"
   | "tool_call"
@@ -19,6 +28,8 @@ export interface TraceEvent {
 }
 
 export class Trace {
+  // 这个 Trace 比第七章版本更偏评测：
+  // 除了记录事件，还提供按工具名查询的便捷方法。
   private events: TraceEvent[] = [];
   private stepNumber = 0;
 

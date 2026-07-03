@@ -1,3 +1,12 @@
+// ============================================================
+//  第九章 utils：多 Agent 共用工具
+//
+//  学习目标：
+//  1. 学会在模型输出边界做 JSON parse + Zod schema 校验
+//  2. 用清晰错误信息定位是哪个 agent 的输出坏了
+//  3. 把终端打印和文本预览这类小工具集中复用
+// ============================================================
+
 // Small helpers shared across the agents.
 //
 // The JSON parsing here validates each agent's output against a Zod schema so
@@ -16,6 +25,8 @@ export function safeJsonParse<T>(
   agentName: string,
   schema: z.ZodType<T>
 ): T {
+  // 这个函数是 agent handoff 的“验收口”。
+  // 上一个 agent 生成的文本，必须通过这里才能交给下一个 agent。
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

@@ -1,3 +1,12 @@
+// ============================================================
+//  第十章 utils：路由模块共用工具
+//
+//  学习目标：
+//  1. 复用 JSON parse + Zod 校验逻辑
+//  2. 用清晰错误暴露坏的路由输出
+//  3. 保持 index/routerAgent/handlers 文件更专注自己的职责
+// ============================================================
+
 // Small helpers shared across the module.
 //
 // The JSON parsing here validates the router's output against a Zod schema so
@@ -16,6 +25,8 @@ export function safeJsonParse<T>(
   label: string,
   schema: z.ZodType<T>
 ): T {
+  // Router 是模型输出，不能直接信任。
+  // 这一步把“看起来像 JSON 的文本”变成经过 schema 验证的对象。
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

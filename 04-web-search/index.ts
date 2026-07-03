@@ -1,3 +1,17 @@
+// ============================================================
+//  第四章：web-search（联网搜索 agent）
+//
+//  学习目标：
+//  1. 理解 web_search 也只是一个普通工具
+//  2. 学会把搜索 API 的结果格式化成模型可读文本
+//  3. 看懂“搜索多次 -> 汇总 -> 写答案”的 agent loop
+//  4. 理解为什么必须要求模型只引用真实搜索结果中的 URL
+//
+//  核心结论：
+//  模型的知识可能过期，而搜索工具可以补充当前信息。
+//  但引用和事实仍然要受代码与 prompt 双重约束，不能让模型随便编来源。
+// ============================================================
+
 // Web search agent: the model searches the web to answer a research question.
 // The key insight: web_search is just another tool — a function that returns a
 // string. The model decides when to call it and how many times. You never
@@ -8,6 +22,7 @@ import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
+// Tavily 是外部搜索服务，所以除了 OPENAI_API_KEY，还需要 TAVILY_API_KEY。
 
 const MAX_ITERATIONS = 10;
 
@@ -35,6 +50,8 @@ interface TavilyResponse {
 }
 
 async function webSearch(query: string): Promise<string> {
+  // webSearch 是真正联网的工具函数。
+  // 模型只会提出 query；HTTP 请求、错误处理和结果裁剪由代码完成。
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -72,6 +89,9 @@ async function webSearch(query: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 const tools: OpenAI.Chat.ChatCompletionTool[] = [
+  // 这里有两个工具：
+  // - web_search：继续搜资料
+  // - write_answer：宣布研究完成并输出答案
   {
     type: "function",
     function: {
@@ -150,6 +170,8 @@ function parseToolArgs(raw: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 async function runResearchAgent(question: string): Promise<string> {
+  // 研究型 agent 的循环和 03-agent-loop 几乎一样。
+  // 差异只在工具：这次工具不是读 mock 文件，而是搜索网页。
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: "system",
@@ -202,12 +224,16 @@ async function runResearchAgent(question: string): Promise<string> {
         const args = parseToolArgs(call.function.arguments);
 
         if (call.function.name === "web_search") {
+          // 搜索结果会作为 tool 消息放回上下文。
+          // 模型下一轮可以基于这些结果决定是否继续搜。
           console.log(`  → web_search("${args.query}")`);
           const results = await webSearch(args.query);
           const preview = results.length > 120 ? results.slice(0, 120) + "…" : results;
           console.log(`  ← ${preview}`);
           messages.push({ role: "tool", tool_call_id: call.id, content: results });
         } else if (call.function.name === "write_answer") {
+          // terminal tool：模型认为资料足够后调用它。
+          // 这样循环可以明确结束，而不是靠猜 finish_reason。
           if (!args.answer) {
             messages.push({ role: "tool", tool_call_id: call.id, content: "Missing required argument: answer" });
             continue;

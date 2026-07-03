@@ -1,3 +1,16 @@
+// ============================================================
+//  第七章：reliability-observability（可靠性与可观测性）
+//
+//  学习目标：
+//  1. 理解 agent loop 为什么需要 trace、timeout、retry 和 allow-list
+//  2. 学会把模型决策、工具调用、工具结果和停止原因记录下来
+//  3. 区分模型能处理的问题和系统应该自动恢复的问题
+//  4. 看懂“显式终止工具”如何让 agent 有清晰的完成信号
+//
+//  核心结论：
+//  能跑起来只是第一步。真正可维护的 agent，要能解释“刚才发生了什么”。
+// ============================================================
+
 // Reliability & Observability
 //
 // The agent loop from earlier modules is the skeleton. This module wraps it
@@ -100,6 +113,8 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
 // ---------------------------------------------------------------------------
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  // Promise.race 的思想：工具正常完成和超时计时器谁先结束，就采用谁。
+  // 这里手写 Promise 是为了在成功/失败时清理 timer，避免无意义的计时器残留。
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
     p.then(
@@ -122,6 +137,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // ---------------------------------------------------------------------------
 
 function validateToolName(name: string): string | null {
+  // 模型可能幻觉出不存在的工具名。
+  // allow-list 用代码明确告诉系统：只有这些工具能执行。
   if (!ALLOWED_TOOLS.has(name)) {
     return `Tool "${name}" is not allowed. Allowed: ${[...ALLOWED_TOOLS].join(", ")}.`;
   }
@@ -138,6 +155,8 @@ type ParsedToolArgs =
   | { ok: false; error: string; raw: string };
 
 function parseArgs(raw: string): ParsedToolArgs {
+  // 工具参数来自模型生成的 JSON 字符串。
+  // 这里不把错误吞成空对象，而是返回结构化错误，方便 trace 记录。
   try {
     const parsed = JSON.parse(raw);
 
@@ -168,6 +187,8 @@ async function runToolWithRetries(
   toolName: string,
   args: Record<string, unknown>
 ): Promise<ResolvedResult> {
+  // 这一层负责“系统级恢复”：
+  // 工具临时失败时，先由代码重试，而不是立刻把噪音暴露给模型。
   let attempt = 0;
 
   while (true) {
@@ -239,6 +260,8 @@ async function runToolWithRetries(
 // ---------------------------------------------------------------------------
 
 async function runAgent(userGoal: string): Promise<{ answer: string | null; stopReason: string }> {
+  // runAgent 把前面几章的模式组合起来：
+  // messages 保存上下文，tools 描述能力，trace 记录证据，循环控制停止条件。
   const trace = new Trace(newRunId());
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {

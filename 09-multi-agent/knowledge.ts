@@ -1,3 +1,12 @@
+// ============================================================
+//  第九章 knowledge：本地知识库
+//
+//  学习目标：
+//  1. 理解 grounding：让模型基于给定资料回答，而不是自由发挥
+//  2. 用 typed object 保存可复用的工程建议
+//  3. 把结构化知识转换成 prompt 友好的纯文本
+// ============================================================
+
 // A small mock knowledge base — no external APIs.
 //
 // This is what grounds the Worker Agent. Instead of inventing an architecture
@@ -40,6 +49,8 @@ export const knowledge = {
 
 /** Render the knowledge base as plain text for inclusion in a prompt. */
 export function knowledgeAsText(): string {
+  // 把对象格式转换成普通文本，方便直接塞进 prompt。
+  // 当前 workerAgent 使用 JSON.stringify(knowledge)，这个函数展示另一种可读格式。
   return [
     "Recommended MVP features:",
     ...knowledge.recommendedMvpFeatures.map((f) => `- ${f}`),

@@ -1,3 +1,15 @@
+// ============================================================
+//  第八章 judge：可选的 LLM 裁判
+//
+//  学习目标：
+//  1. 理解 LLM judge 适合评估“回答质量”这类模糊标准
+//  2. 明白 judge 也会失败，所以必须捕获错误并返回结构化结果
+//  3. 学会把 trace 压缩后交给 judge，避免上下文过长
+//
+//  注意：
+//  LLM judge 是辅助，不是绝对真理。能用代码判断的条件，仍然放在 evaluator.ts。
+// ============================================================
+
 import "dotenv/config";
 import OpenAI from "openai";
 
@@ -16,6 +28,8 @@ export async function judgeAnswer(params: {
   // visible in the trace, and the judge only for fuzzy answer-quality checks.
   try {
     const compactTrace = params.trace.map((event) => ({
+      // 只保留 judge 需要的信息：事件类型、工具名、参数、结果预览和错误。
+      // 不把完整 trace 原样塞进去，可以节省 token，也减少噪声。
       type: event.eventType,
       tool: event.toolName,
       args: event.arguments,
@@ -47,6 +61,8 @@ export async function judgeAnswer(params: {
 
     const raw = response.choices[0].message.content ?? "";
     const parsed: unknown = JSON.parse(raw);
+    // judge 被要求返回 JSON，但仍然要 parse + 检查字段类型。
+    // 不能因为它是“裁判模型”，就默认它永远守格式。
     if (
       parsed === null ||
       typeof parsed !== "object" ||
@@ -59,6 +75,8 @@ export async function judgeAnswer(params: {
     return parsed as { passed: boolean; score: number; reasoning: string };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // 裁判失败时返回 failed，而不是抛出导致整个评测崩溃。
+    // 这样报告里能清楚看到是 judge 环节出了问题。
     return { passed: false, score: 0, reasoning: `Judge failed: ${message}` };
   }
 }

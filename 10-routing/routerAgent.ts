@@ -1,3 +1,12 @@
+// ============================================================
+//  Router Agent：把用户请求分类到执行路线
+//
+//  学习目标：
+//  1. 理解 router 不回答问题，只输出结构化决策
+//  2. 用严格 prompt 约束“选择最便宜安全路线”
+//  3. 用 Zod 校验 route/confidence/risk_level 等字段
+// ============================================================
+
 import "dotenv/config";
 
 import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "./config.js";
@@ -46,6 +55,8 @@ Return a JSON object with exactly these fields:
 }`;
 
 export async function runRouterAgent(request: string): Promise<RouterDecision> {
+  // 输入是一条用户请求，输出是 RouterDecision。
+  // 后续 dispatch 会根据 decision.route 选择对应处理器。
   const response = await getClient().chat.completions.create({
     model: MODEL,
     temperature: TEMPERATURE,

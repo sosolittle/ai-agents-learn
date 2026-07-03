@@ -1,3 +1,17 @@
+// ============================================================
+//  第三章：agent-loop（智能体循环）
+//
+//  学习目标：
+//  1. 区分“一问一答的工具调用”和“围绕目标持续行动的 agent”
+//  2. 理解为什么 agent loop 必须有最大迭代次数
+//  3. 学会用 terminal tool 让模型显式宣布任务完成
+//  4. 观察模型如何自己决定先列文件、再读文件、最后写报告
+//
+//  核心结论：
+//  Agent = 模型决策 + 工具执行 + 状态历史 + 停止条件。
+//  没有停止条件的 agent，不是更智能，而是更容易失控。
+// ============================================================
+
 // Agent loop: the model pursues a goal over multiple steps, deciding what to do
 // next each iteration. Unlike tool use (one query → one answer), the agent drives
 // itself — you hand it a goal and it figures out how to reach it.
@@ -10,6 +24,8 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // The most important constant in any agent.
 // Without this, a confused model runs until you hit your rate limit.
 const MAX_ITERATIONS = 15;
+// 最大迭代次数是 agent 的安全带。
+// 每次模型调用工具或继续思考，都会消耗 token 和时间。
 
 // ---------------------------------------------------------------------------
 // Mock codebase — four files, three with planted security issues.
@@ -93,10 +109,12 @@ export function truncate(str: string, max: number): string {
 // ---------------------------------------------------------------------------
 
 function listFiles(): string {
+  // 工具 1：列出可审查文件。agent 不应该凭空知道有哪些文件。
   return JSON.stringify(Object.keys(FILES));
 }
 
 function readFile(path: string): string {
+  // 工具 2：读取某个文件。只有读过文件，模型才能基于真实内容审查。
   const content = FILES[path];
   if (!content) return `File not found: ${path}`;
   return content;
@@ -108,6 +126,7 @@ function readFile(path: string): string {
 let finalReport: string | null = null;
 
 function writeReport(content: string): string {
+  // 工具 3：终止工具。模型调用它表示“我已经完成任务，要输出最终报告”。
   finalReport = content;
   return "Report saved.";
 }
@@ -181,6 +200,7 @@ function parseToolArgs(raw: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 function executeTool(name: string, args: Record<string, string>): string {
+  // 所有工具请求都经过这里，便于集中做参数校验和权限控制。
   switch (name) {
     case "list_files":
       return listFiles();
@@ -221,6 +241,9 @@ function executeTool(name: string, args: Record<string, string>): string {
 // ---------------------------------------------------------------------------
 
 async function runAgent(goal: string): Promise<string> {
+  // 和 02-tool-use 最大的区别：
+  // 这里用户给的是一个目标，而不是一个具体问题。
+  // 模型自己决定需要调用哪些工具、调用顺序是什么。
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: "system",
@@ -279,6 +302,8 @@ async function runAgent(goal: string): Promise<string> {
 
         // Exit condition B: terminal tool called — agent is done.
         if (call.function.name === "write_report" && finalReport !== null) {
+          // write_report 已经把 finalReport 设置好，说明任务显式完成。
+          // 这比“模型不再调用工具”更可靠。
           console.log(`  ← report written (${finalReport.length} chars)\n`);
           // Push the result so message history stays valid, then exit cleanly.
           messages.push({ role: "tool", tool_call_id: call.id, content: result });

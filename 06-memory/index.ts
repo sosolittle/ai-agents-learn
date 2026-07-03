@@ -1,3 +1,16 @@
+// ============================================================
+//  第六章：memory（记忆）
+//
+//  学习目标：
+//  1. 理解“记忆”本质上是应用层状态管理，不是模型自动拥有的能力
+//  2. 对比 full-buffer、sliding-window、summary、persistent 四种策略
+//  3. 看懂为什么上下文窗口既有限又昂贵
+//  4. 学会把“短期对话历史”和“长期事实记忆”分开思考
+//
+//  核心结论：
+//  记忆不是越多越好，而是要决定保留什么、压缩什么、丢弃什么。
+// ============================================================
+
 // Memory is a state management problem.
 //
 // The token context window is your RAM — finite and expensive. Every request
@@ -25,6 +38,8 @@ type Message = OpenAI.Chat.ChatCompletionMessageParam;
 // ---------------------------------------------------------------------------
 
 interface Memory {
+  // Memory 是四种策略共同遵守的接口。
+  // 只要实现 add 和 getMessages，chat() 就不用关心具体记忆策略。
   label: string;
   add(role: "user" | "assistant", content: string): Promise<void>;
   getMessages(): Message[];
@@ -42,6 +57,8 @@ interface Memory {
 // ---------------------------------------------------------------------------
 
 class FullBufferMemory implements Memory {
+  // 最朴素的记忆：所有消息原样保存。
+  // 优点是信息完整；缺点是成本和上下文长度线性增长。
   label = "full-buffer";
   private history: Message[] = [];
 
@@ -69,6 +86,8 @@ class FullBufferMemory implements Memory {
 // ---------------------------------------------------------------------------
 
 class SlidingWindowMemory implements Memory {
+  // 滑动窗口：只保留最近 N 条消息。
+  // 它适合短任务，但会忘记早期事实。
   label = "sliding-window";
   private history: Message[] = [];
 
@@ -102,6 +121,8 @@ class SlidingWindowMemory implements Memory {
 // ---------------------------------------------------------------------------
 
 class SummaryMemory implements Memory {
+  // 摘要记忆：把旧消息压缩成 summary，再保留最近对话。
+  // 它牺牲细节，换取更稳定的上下文长度。
   label = "summary";
   private history: Message[] = [];
   private summary: string | null = null;
@@ -117,6 +138,8 @@ class SummaryMemory implements Memory {
   }
 
   private async compress(): Promise<void> {
+    // compress 会调用模型来总结旧对话。
+    // 注意：总结本身也是一次模型调用，也有成本和出错概率。
     const toCompress = this.history.slice(0, -2); // keep the last exchange fresh
     this.history = this.history.slice(-2);
 
@@ -178,6 +201,8 @@ class SummaryMemory implements Memory {
 const MEMORY_FILE = path.join(process.cwd(), "memory.json");
 
 class PersistentMemory implements Memory {
+  // 持久记忆：把稳定事实保存到磁盘，下次运行还能加载。
+  // 这模拟了真实产品里的用户画像/偏好存储。
   label = "persistent";
   private history: Message[] = [];
   private facts: string[] = [];
@@ -204,6 +229,8 @@ class PersistentMemory implements Memory {
   }
 
   private async extractAndSave(): Promise<void> {
+    // 从最近几轮中抽取“用户明确说过的稳定事实”。
+    // 不保存模型猜测，也不保存临时闲聊，这能减少错误记忆污染。
     const recentTurns = this.history
       .slice(-4)
       .map((m) => `${m.role}: ${m.content}`)
@@ -263,6 +290,8 @@ class PersistentMemory implements Memory {
 // ---------------------------------------------------------------------------
 
 async function chat(memory: Memory, userMessage: string): Promise<string> {
+  // chat 不关心具体是哪种记忆实现。
+  // 这就是接口的价值：调用方只依赖统一能力，而不是依赖某个类的细节。
   await memory.add("user", userMessage);
 
   const response = await client.chat.completions.create({
@@ -313,6 +342,8 @@ const CONVERSATION: string[] = [
 ];
 
 async function runDemo(memory: Memory): Promise<void> {
+  // 用同一段 10 轮对话测试不同记忆策略。
+  // 第 10 轮会问第 1 轮的信息，用来暴露“忘记早期上下文”的问题。
   console.log(`\n${"═".repeat(60)}`);
   console.log(`Strategy: ${memory.label.toUpperCase()}`);
   console.log("═".repeat(60));
@@ -333,6 +364,8 @@ async function runDemo(memory: Memory): Promise<void> {
 
 async function main(): Promise<void> {
   const strategy = process.argv[2] ?? "full";
+  // process.argv[2] 是命令行参数：
+  // npm start window / summary / persist 会选择不同记忆实现。
 
   const memory: Memory =
     strategy === "window"

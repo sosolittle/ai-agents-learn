@@ -1,3 +1,12 @@
+// ============================================================
+//  Worker Agent：根据计划和知识库产出 MVP 草稿
+//
+//  学习目标：
+//  1. 理解 Worker 不应该重新解释用户目标，而应该服从 Planner 的计划
+//  2. 学会把 local knowledge 注入 prompt，让输出更 grounded
+//  3. 用 schema 校验 Worker 草稿，保证 Reviewer 能稳定读取
+// ============================================================
+
 import "dotenv/config";
 
 import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
@@ -31,6 +40,8 @@ export async function runWorkerAgent(
   goal: string,
   plan: PlannerOutput
 ): Promise<WorkerDraft> {
+  // Worker 接收原始 goal 和 plan。
+  // goal 用于避免计划丢失原始意图；plan 用于约束工作范围。
   const userContent = [
     `Original user goal: ${goal}`,
     "",
@@ -53,5 +64,6 @@ export async function runWorkerAgent(
   });
 
   const raw = response.choices[0].message.content ?? "";
+  // 这里不直接 return JSON.parse(raw)，而是交给 safeJsonParse 做 schema 校验。
   return safeJsonParse<WorkerDraft>(raw, "Worker Agent", WorkerDraftSchema);
 }

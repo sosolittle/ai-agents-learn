@@ -1,3 +1,12 @@
+// ============================================================
+//  Planner Agent：把模糊目标变成结构化计划
+//
+//  学习目标：
+//  1. 让第一个 agent 只负责“理解需求和列计划”
+//  2. 用 JSON 输出给后续 Worker 提供稳定输入
+//  3. 避免 Planner 直接写最终答案或实现细节
+// ============================================================
+
 import "dotenv/config";
 
 import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
@@ -26,6 +35,8 @@ Return a JSON object with exactly these fields:
 }`;
 
 export async function runPlannerAgent(goal: string): Promise<PlannerOutput> {
+  // Planner 的输入只有用户目标，输出必须符合 PlannerOutputSchema。
+  // 这一步是把自然语言需求转换成工程化合同。
   const response = await getClient().chat.completions.create({
     model: MODEL,
     temperature: TEMPERATURE,

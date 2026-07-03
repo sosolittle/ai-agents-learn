@@ -1,3 +1,15 @@
+// ============================================================
+//  第八章 eval-cases：评测用例表
+//
+//  学习目标：
+//  1. 学会把“用户输入”和“期望行为”写成数据
+//  2. 同时检查正向要求 expectedTools 和负向要求 forbiddenTools
+//  3. 理解 eval case 是 agent 开发里的回归测试资产
+//
+//  你可以把这个文件当成 agent 的“小考卷”：
+//  每条用例都描述一个场景，以及它应该调用什么、不能调用什么、答案要包含什么。
+// ============================================================
+
 export interface EvalCase {
   name: string;
   input: string;
@@ -13,6 +25,10 @@ export interface EvalCase {
 }
 
 export const evalCases: EvalCase[] = [
+  // 用例设计原则：
+  // - 既有简单查订单，也有库存、拒绝、组合请求
+  // - 不只检查最终答案，还检查工具路径
+  // - 对容易幻觉的内容写 answerMustNotContain
   {
     name: "Looks up a shipped order",
     input: "Where is order ORD-001?",

@@ -1,3 +1,17 @@
+// ============================================================
+//  第五章：scrape-page（搜索 + 抓取网页）
+//
+//  学习目标：
+//  1. 理解“搜索摘要”和“完整网页内容”的差别
+//  2. 学会在 web_search 后只允许抓取搜索结果里的 URL
+//  3. 认识 SSRF 风险：agent 不能随便抓任意 URL
+//  4. 学会裁剪网页正文，避免一个页面撑爆模型上下文
+//
+//  核心结论：
+//  抓网页比搜索更危险，因为它会让你的服务器主动访问外部地址。
+//  所以 URL allowlist、协议限制、内网地址拦截、超时和长度限制都很重要。
+// ============================================================
+
 import "dotenv/config";
 import OpenAI from "openai";
 import { parse } from "node-html-parser";
@@ -8,6 +22,8 @@ const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 const MAX_ITERATIONS = 10;
 // Keep scraped pages bounded so one URL cannot flood the model context.
 const MAX_SCRAPED_CHARS = 8000;
+// 抓取后的正文最多放 8000 个字符进上下文。
+// 这是成本控制，也是防止网页内容“淹没”模型注意力。
 
 interface TavilyResult {
   title: string;
@@ -28,6 +44,8 @@ interface WebSearchOutput {
 }
 
 async function webSearch(query: string): Promise<WebSearchOutput> {
+  // 搜索函数除了返回给模型看的 formattedText，
+  // 还返回原始 urls，供 agent loop 建立“允许抓取列表”。
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -66,6 +84,8 @@ async function webSearch(query: string): Promise<WebSearchOutput> {
 // Using parsed.href means "http://example.com" and "http://example.com/"
 // resolve to the same string, preventing trivial bypass attempts.
 function normalizeUrl(rawUrl: string): string | null {
+  // URL 字符串有很多等价写法。先标准化再比较，
+  // 可以减少误拒绝，也能降低绕过 allowlist 的风险。
   try {
     return new URL(rawUrl).href;
   } catch {
@@ -78,6 +98,8 @@ function normalizeUrl(rawUrl: string): string | null {
 // accidental SSRF-style risk — this is a teaching example, not a hardened
 // production crawler.
 function validateScrapeUrl(rawUrl: string): string | null {
+  // 这是抓取工具的第一道安全检查。
+  // 返回 null 表示通过；返回字符串表示拒绝原因。
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
@@ -123,6 +145,8 @@ function validateScrapeUrl(rawUrl: string): string | null {
 }
 
 async function scrapePage(url: string): Promise<string> {
+  // scrapePage 是真正访问网页的工具。
+  // 它先做安全校验，再 fetch，再解析 HTML，最后抽取正文文本。
   // Safety check before we ever open a network connection.
   const validationError = validateScrapeUrl(url);
   if (validationError) return `Rejected: ${validationError}`;
@@ -185,6 +209,10 @@ async function scrapePage(url: string): Promise<string> {
 }
 
 const tools: OpenAI.Chat.ChatCompletionTool[] = [
+  // 三个工具构成一个研究流程：
+  // 1. web_search 找候选来源
+  // 2. scrape_page 读取某个候选来源全文
+  // 3. write_answer 输出最终答案
   {
     type: "function",
     function: {
@@ -260,6 +288,8 @@ function parseToolArgs(raw: string): Record<string, string> {
 }
 
 async function runResearchAgent(question: string): Promise<string> {
+  // 这里的 agent 比 04-web-search 多了一个关键状态：
+  // allowedScrapeUrls。它记录哪些 URL 是搜索结果真实返回过的。
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     {
       role: "system",

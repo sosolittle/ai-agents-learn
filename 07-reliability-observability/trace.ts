@@ -1,3 +1,12 @@
+// ============================================================
+//  第七章 trace：agent 的飞行记录仪
+//
+//  学习目标：
+//  1. 理解为什么 trace 是调试 agent 的核心资产
+//  2. 学会把一次运行拆成连续事件：决策、调用、结果、错误、重试、停止
+//  3. 看懂 runId 和 stepNumber 如何帮助你重放一次运行
+// ============================================================
+
 // A trace is the agent's flight recorder. Every meaningful step writes one
 // event: what the model decided, what tool ran, what came back, what failed,
 // whether we retried, why the loop stopped.
@@ -30,6 +39,8 @@ export interface TraceEvent {
 }
 
 export class Trace {
+  // Trace 是一个很小的记录器。
+  // 真实项目可以把同样的数据结构写入数据库或可观测性平台。
   readonly runId: string;
   private events: TraceEvent[] = [];
   private step = 0;
@@ -48,6 +59,7 @@ export class Trace {
   }
 
   all(): TraceEvent[] {
+    // 返回浅拷贝，避免外部代码直接修改内部 events 数组。
     return [...this.events];
   }
 

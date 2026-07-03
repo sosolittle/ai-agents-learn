@@ -1,3 +1,12 @@
+// ============================================================
+//  第七章工具层：mock backend tools
+//
+//  学习目标：
+//  1. 理解工具函数应该返回结构化成功/失败结果
+//  2. 区分 retryable 临时错误和不可重试的永久错误
+//  3. 看懂 dispatcher 如何成为模型与真实后端之间的安全边界
+// ============================================================
+
 // Mock backend tools for the reliability demo.
 //
 // These stand in for whatever your real backend does — a database query, an
@@ -33,6 +42,8 @@ export function resetToolState(): void {
 }
 
 export async function getOrderStatus(orderId: string): Promise<ToolOutcome> {
+  // 这个工具故意第一次失败，用来演示 index.ts 里的 retry 逻辑。
+  // 因为失败是确定性的，所以学习时每次运行都能看到同样的轨迹。
   getOrderStatusAttempts++;
 
   // First call fails with a transient error — the kind of thing you'd see
@@ -53,6 +64,7 @@ export async function getOrderStatus(orderId: string): Promise<ToolOutcome> {
 }
 
 export async function checkInventory(productName: string): Promise<ToolOutcome> {
+  // 库存工具没有故意失败，方便和 getOrderStatus 的重试行为做对比。
   const stock: Record<string, number> = {
     "Wireless Headphones": 14,
     "USB-C Cable": 0,
@@ -77,6 +89,8 @@ export async function runTool(
   name: string,
   args: Record<string, unknown>
 ): Promise<ToolOutcome> {
+  // dispatcher 再次做参数类型检查。
+  // 即使工具 schema 写了 required，模型输出仍然可能缺字段或类型不对。
   switch (name) {
     case "getOrderStatus":
       if (typeof args.orderId !== "string") {
@@ -102,3 +116,4 @@ export async function runTool(
 }
 
 export const ALLOWED_TOOLS = new Set(["getOrderStatus", "checkInventory", "finalAnswer"]);
+// allow-list 给 agent loop 使用：模型只能请求这三个工具。

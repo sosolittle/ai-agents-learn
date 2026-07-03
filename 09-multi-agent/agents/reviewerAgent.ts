@@ -1,3 +1,12 @@
+// ============================================================
+//  Reviewer Agent：独立审查 Worker 草稿
+//
+//  学习目标：
+//  1. 理解“生成”和“审查”分离为什么能提升质量
+//  2. 用原始 goal、plan、draft 三份材料进行对照检查
+//  3. 通过 approve/revise 给主流程一个明确决策信号
+// ============================================================
+
 import "dotenv/config";
 
 import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
@@ -30,6 +39,8 @@ export async function runReviewerAgent(
   plan: PlannerOutput,
   draft: WorkerDraft
 ): Promise<ReviewResult> {
+  // Reviewer 不需要调用工具，只需要检查一致性：
+  // draft 是否满足 goal 和 plan，是否有缺项、风险或范围蔓延。
   const userContent = [
     `Original user goal: ${goal}`,
     "",
