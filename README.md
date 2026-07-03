@@ -9,7 +9,7 @@ This is a structured learning lab, not a library. Each folder is one self-contai
 ## Start here
 
 **New to LLM apps?**
-Start with [`01-basics/simple-llm-call`](./01-basics/simple-llm-call/) — one API call, one response, no abstractions.
+Start with [`01-basics/simple-llm-call`](01-basics/1.simple-llm-call/) — one API call, one response, no abstractions.
 
 **Already comfortable with basic LLM calls?**
 Jump to [`02-tool-use`](./02-tool-use/) — this is the first pattern where the model can call your backend functions before it answers. It's where "chat with an LLM" becomes something closer to an actual agent.
@@ -57,17 +57,17 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 
 | Pattern | What it demonstrates |
 |---|---|
-| [simple-llm-call](./01-basics/simple-llm-call/) | One API call, reading the response, understanding tokens |
-| [prompt-chaining](./01-basics/prompt-chaining/) | Passing output of one call as input to the next |
-| [structured-output](./01-basics/structured-output/) | Getting reliable JSON back from an LLM |
-| [streaming](./01-basics/streaming/) | Handling partial response chunks as they arrive |
-| [conversation-history](./01-basics/conversation-history/) | Maintaining multi-turn memory with a messages array |
-| [system-vs-user-prompt](./01-basics/system-vs-user-prompt/) | Comparing system instructions with user prompts |
-| [temperature-and-tokens](./01-basics/temperature-and-tokens/) | Seeing how temperature and token limits affect output |
-| [prompt-templates](./01-basics/prompt-templates/) | Filling simple string templates with variables |
-| [few-shot-prompting](./01-basics/few-shot-prompting/) | Providing examples in context instead of fine-tuning |
-| [error-handling-retries](./01-basics/error-handling-retries/) | Retrying rate limits and transient failures safely |
-| [input-output-validation](./01-basics/input-output-validation/) | Validating prompts and model output at the boundary |
+| [simple-llm-call](01-basics/1.simple-llm-call/) | One API call, reading the response, understanding tokens |
+| [prompt-chaining](01-basics/9.prompt-chaining/) | Passing output of one call as input to the next |
+| [structured-output](01-basics/6.structured-output/) | Getting reliable JSON back from an LLM |
+| [streaming](01-basics/11.streaming/) | Handling partial response chunks as they arrive |
+| [conversation-history](01-basics/8.conversation-history/) | Maintaining multi-turn memory with a messages array |
+| [system-vs-user-prompt](01-basics/2.system-vs-user-prompt/) | Comparing system instructions with user prompts |
+| [temperature-and-tokens](01-basics/3.temperature-and-tokens/) | Seeing how temperature and token limits affect output |
+| [prompt-templates](01-basics/4.prompt-templates/) | Filling simple string templates with variables |
+| [few-shot-prompting](01-basics/5.few-shot-prompting/) | Providing examples in context instead of fine-tuning |
+| [error-handling-retries](01-basics/10.error-handling-retries/) | Retrying rate limits and transient failures safely |
+| [input-output-validation](01-basics/7.input-output-validation/) | Validating prompts and model output at the boundary |
 
 ### 02 — Tool Use
 

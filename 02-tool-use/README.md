@@ -255,5 +255,5 @@ That's in `03-agent-loop`.
 - [OpenAI Function Calling guide](https://platform.openai.com/docs/guides/function-calling) — official docs with more examples and edge cases
 - [OpenAI tool_choice options](https://platform.openai.com/docs/api-reference/chat/create#chat-create-tool_choice) — API reference for controlling tool selection
 - [JSON Schema basics](https://json-schema.org/understanding-json-schema) — understanding the parameter schema format
-- [Structured output pattern](../01-basics/structured-output/index.ts) — how `tool_choice: "forced"` differs from `"auto"`
+- [Structured output pattern](../01-basics/6.structured-output/index.ts) — how `tool_choice: "forced"` differs from `"auto"`
 

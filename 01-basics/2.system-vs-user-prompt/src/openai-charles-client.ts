@@ -31,7 +31,7 @@ const charlesFetch: typeof globalThis.fetch = async (input, init) => {
 
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
 
-    console.log("[Charles Debug] request url =", url);
+    // console.log("[Charles Debug] request url =", url);
 
     return fetch(input as any, {
         ...(init as any),
