@@ -371,6 +371,13 @@ async function main() {
       // 这些内容都应该被当成"数据"处理，而不是无条件当成新规则。
     ];
 
+    const messages2 = [
+      {
+        role: "user" as const,
+        content: "今天四川省成都市高新区的天气是多少度？"
+      }
+    ]
+
     // ============================================================
     //  调用 OpenAI Chat Completions API
     // ============================================================
@@ -404,7 +411,7 @@ async function main() {
       // 本示例没有打印 finish_reason，是为了保持输出简洁。
       // 但真实项目里应该检查它，避免把半截回答当成完整结果。
 
-      messages,
+      messages: messages,
       // 把刚刚构造好的 messages 数组传给模型
       //
       // 每次循环的 user 消息相同
