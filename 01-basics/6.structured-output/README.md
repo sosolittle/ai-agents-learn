@@ -1,29 +1,29 @@
-# Structured Output
+# 结构化输出
 
-Structured output turns model text into predictable data that application code can parse, validate, and pass to the next step.
-
----
-
-## What this demonstrates
-
-- Using tool/function calling to request a specific shape
-- Defining fields, nullable values, and enums
-- Parsing function-call arguments as JSON
-- Producing data that can feed downstream code
+结构化输出会把模型生成的文本，转换成应用代码可以解析、校验，并传给下一步使用的可预测数据。
 
 ---
 
-## Why this matters
+## 这个示例演示什么
 
-Structured output is critical when one model step feeds application code. A UI, database write, workflow branch, or tool call needs fields it can trust more than a paragraph that "looks right."
+- 使用 tool/function calling 要求模型返回指定的数据形状
+- 定义字段、可为空的值，以及枚举值
+- 把函数调用参数解析成 JSON
+- 生成可以继续交给下游代码使用的数据
 
 ---
 
-## Run it
+## 为什么这很重要
+
+当某一步模型输出要交给应用代码继续处理时，结构化输出非常关键。UI 展示、数据库写入、工作流分支或工具调用，需要的是更可信的字段，而不是一段“看起来像对的”文字。
+
+---
+
+## 运行方式
 
 ```bash
 cp .env.example .env
-# add your OPENAI_API_KEY to .env
+# 在 .env 里填入你的 OPENAI_API_KEY
 
 npm install
 npm start
@@ -31,14 +31,14 @@ npm start
 
 ---
 
-## Expected output
+## 预期输出
 
 ```text
-Extracted:
+提取结果：
 {
-  "job_title": "Senior Full-Stack Engineer",
+  "job_title": "高级全栈工程师",
   "company": "Acme Corp",
-  "location": "London",
+  "location": "伦敦",
   "salary_range": { "min": 85000, "max": 110000, "currency": "GBP" },
   "required_skills": ["React", "Node.js", "PostgreSQL", "TypeScript"],
   "seniority_level": "senior"
@@ -47,42 +47,42 @@ Extracted:
 
 ---
 
-## The code, explained
+## 代码说明
 
-The model is forced to call a named function:
+代码会强制模型调用一个指定名称的函数：
 
 ```ts
 tools: [{ type: "function", function: { name: "extract_job_posting", parameters: { ... } } }],
 tool_choice: { type: "function", function: { name: "extract_job_posting" } },
 ```
 
-The arguments come back as a JSON string. The schema shapes the output, and good schema design is part of prompt design: clear field names, sensible enums, and explicit nullable fields all improve reliability.
+返回的 arguments 是一个 JSON 字符串。schema 会约束输出形状，而好的 schema 设计也是提示词设计的一部分：清楚的字段名、合理的枚举值、明确标出哪些字段可以为空，都能提升可靠性。
 
 ---
 
-## The key insight
+## 关键理解
 
-When a model output becomes program input, design a contract instead of hoping free text is parseable.
-
----
-
-## What can go wrong
-
-- `JSON.parse` still returns untyped data.
-- Schema fields can be too vague.
-- Nullable fields can be hallucinated if not designed carefully.
-- Enums can still need validation in your own code.
+当模型输出要变成程序输入时，应该设计一个明确的数据契约，而不是期待自由文本刚好可以被解析。
 
 ---
 
-## Where this shows up in agents
+## 可能出错的地方
 
-Agents use structured output for routing decisions, tool arguments, extraction results, workflow state, evaluation scores, and handoffs between model steps.
+- `JSON.parse` 返回的仍然是没有经过类型校验的数据。
+- schema 字段可能写得太模糊。
+- 如果可为空字段设计不好，模型可能会编造不存在的信息。
+- 枚举值通常仍然需要在你自己的代码里再校验一次。
 
 ---
 
-## Try it yourself
+## 在 agent 中的常见使用场景
 
-- Add a new enum value to `seniority_level`.
-- Make `salary_range` required and test a job post with no salary.
-- Add an output validator after `JSON.parse`.
+agent 会在这些地方使用结构化输出：路由决策、工具参数、信息抽取结果、工作流状态、评估分数，以及模型步骤之间的交接。
+
+---
+
+## 你可以自己试试
+
+- 给 `seniority_level` 添加一个新的枚举值。
+- 把 `salary_range` 改成必填，然后用一段没有薪资信息的职位描述测试。
+- 在 `JSON.parse` 之后添加一个输出校验器。

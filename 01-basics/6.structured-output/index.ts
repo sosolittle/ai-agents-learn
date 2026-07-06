@@ -18,7 +18,7 @@ import client from "./src/openai-charles-client";
 // const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-// The shape we want back — defined once, used for both the tool schema and TS types
+// 我们希望模型返回的数据形状：定义一次，同时用于工具 schema 和 TS 类型。
 interface JobPosting {
   job_title: string;
   company: string;
@@ -32,14 +32,14 @@ interface JobPosting {
 // 两者要保持一致，否则代码以为有字段，模型却可能没返回。
 
 const RAW_JOB_POST = `
-  We're hiring at Acme Corp! Looking for a Senior Full-Stack Engineer to join our
-  London team. You'll work on our core product alongside a small, senior team.
+  Acme Corp 正在招聘！我们希望找一位高级全栈工程师加入伦敦团队。
+  你将和一个小而资深的团队一起开发我们的核心产品。
 
-  What we need: 5+ years with React and Node.js, experience with PostgreSQL,
-  and ideally some TypeScript. Nice to have: Redis, Docker.
+  我们的要求：5 年以上 React 和 Node.js 经验，有 PostgreSQL 使用经验，
+  最好也会一些 TypeScript。加分项：Redis、Docker。
 
-  Salary: £85,000 – £110,000 depending on experience. Remote-friendly but
-  we'd love someone who can come into London 2 days a week.
+  薪资：根据经验不同，年薪 £85,000 到 £110,000。支持远程办公，
+  但我们希望候选人每周能来伦敦办公室 2 天。
 `;
 // RAW_JOB_POST 模拟一段自然语言职位描述。真实系统里它可能来自网页、
 // PDF、用户粘贴内容或数据库字段。
@@ -52,7 +52,7 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
     messages: [
       {
         role: "user",
-        content: `Extract structured information from this job posting:\n\n${text}`,
+        content: `请从下面这段职位描述中提取结构化信息：\n\n${text}`,
       },
     ],
     tools: [
@@ -62,7 +62,7 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
           name: "extract_job_posting",
           // 这里的 function 不一定真的要在本地执行。
           // 我们把它当作“结构化输出通道”：模型必须填好 arguments。
-          description: "Extract structured fields from a job posting",
+          description: "从职位描述中提取结构化字段",
           parameters: {
             type: "object",
             properties: {
@@ -101,14 +101,14 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
         },
       },
     ],
-    // Force the model to call our tool rather than responding in free text
+    // 强制模型调用我们的工具，而不是返回自由文本。
     tool_choice: { type: "function", function: { name: "extract_job_posting" } },
     // 强制 tool_choice 后，模型不能只写一段说明文字。
     // 它必须调用 extract_job_posting，并把字段放进 arguments。
   });
 
   const toolCall = response.choices[0].message.tool_calls?.[0];
-  if (!toolCall) throw new Error("Model did not return a tool call");
+  if (!toolCall) throw new Error("模型没有返回 tool call");
   // 即使我们强制了 tool_choice，工程代码也仍然要检查异常情况。
   // 网络错误、模型兼容性、供应商差异都可能导致没有 tool_call。
 
@@ -118,12 +118,12 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
 }
 
 async function main() {
-  console.log("Input:\n", RAW_JOB_POST.trim());
-  console.log("\nExtracting...\n");
+  console.log("输入：\n", RAW_JOB_POST.trim());
+  console.log("\n正在提取...\n");
 
   const result = await extractJobPosting(RAW_JOB_POST);
 
-  console.log("Extracted:");
+  console.log("提取结果：");
   console.log(JSON.stringify(result, null, 2));
 }
 
