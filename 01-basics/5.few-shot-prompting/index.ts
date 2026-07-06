@@ -16,10 +16,13 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // client 是和 OpenAI API 通信的客户端。这里使用 dotenv/config，
 // Node 启动时会自动读取 .env，把 OPENAI_API_KEY 放进 process.env。
+
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 const labels = ["billing", "technical", "sales", "general"] as const;
 // as const 会把数组元素固定为字面量类型，而不是普通 string。
@@ -32,6 +35,7 @@ Rules:
 - If it mainly reports a bug, crash, webhook, API failure, or broken upload without money impact, classify as technical.
 - If it asks about pricing, onboarding, demos, or plan options before purchase, classify as sales.
 - Otherwise classify as general.
+- Please respond in Chinese.
 
 Return only the label.`;
 // rules 是分类任务的“评分标准”。真实客服场景里，规则越清楚，
@@ -50,7 +54,7 @@ async function classifyZeroShot(message: string) {
   // Zero-shot 版本：只把规则和当前消息发给模型，不提供任何示例。
   // 这能测试“规则本身”是否足够清晰。
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: model,
     max_tokens: 20,
     temperature: 0,
     // temperature: 0 让输出尽量稳定。分类任务通常希望可重复，
