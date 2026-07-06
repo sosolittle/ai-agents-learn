@@ -28,24 +28,23 @@ const labels = ["billing", "technical", "sales", "general"] as const;
 // as const 会把数组元素固定为字面量类型，而不是普通 string。
 // 这样 TypeScript 知道 labels 只能是这四个具体分类。
 
-const rules = `Classify customer support messages as one of: ${labels.join(", ")}.
+const rules = `请将客户支持消息分类为以下标签之一：${labels.join(", ")}。
 
-Rules:
-- If a message mentions charge, refund, invoice, payment, or subscription cancellation, classify as billing even if it also mentions API/app issues.
-- If it mainly reports a bug, crash, webhook, API failure, or broken upload without money impact, classify as technical.
-- If it asks about pricing, onboarding, demos, or plan options before purchase, classify as sales.
-- Otherwise classify as general.
-- Please respond in Chinese.
+分类规则：
+- 如果消息提到扣费、退款、发票、付款或取消订阅，请分类为 billing，即使它同时提到 API 或应用问题。
+- 如果消息主要是在反馈 bug、崩溃、webhook、API 调用失败，或上传功能损坏，并且没有造成金钱影响，请分类为 technical。
+- 如果消息是在购买前询问价格、上手指导、产品演示或套餐选项，请分类为 sales。
+- 其他情况请分类为 general。
 
-Return only the label.`;
+请只返回标签本身。`;
 // rules 是分类任务的“评分标准”。真实客服场景里，规则越清楚，
 // 模型越不容易把“退款 + 技术故障”这种混合问题分错类。
 
 const inputs = [
-  "I was charged twice after the webhook failed.",
-  "The dashboard crashes whenever I upload a CSV.",
-  "Do you offer onboarding calls for new teams?",
-  "I want to cancel because the API keeps timing out.",
+  "webhook 失败后，我被重复扣费了两次。",
+  "每次上传 CSV 文件时，控制台都会崩溃。",
+  "你们会为新团队提供上手指导电话吗？",
+  "我想取消订阅，因为 API 一直超时。",
 ];
 // inputs 是要测试的客户消息。它们故意包含一些容易混淆的情况，
 // 比如既提到 webhook/API，又提到 charged/cancel。
@@ -55,16 +54,20 @@ async function classifyZeroShot(message: string) {
   // 这能测试“规则本身”是否足够清晰。
   const response = await client.chat.completions.create({
     model: model,
-    max_tokens: 20,
+    max_tokens: 2000,
     temperature: 0,
     // temperature: 0 让输出尽量稳定。分类任务通常希望可重复，
     // 不希望同一条工单这次是 billing、下次变成 technical。
     messages: [
       {
         role: "user",
-        content: `${rules}\n\nMessage: ${message}`,
+        content: `${rules}\n\n客户消息：${message}`,
       },
     ],
+    // messages: [
+    //   { role: "system", content: rules },
+    //   { role: "user", content: `客户消息：${message}` },
+    // ]
   });
 
   return response.choices[0].message.content ?? "";
@@ -74,29 +77,29 @@ async function classifyFewShot(message: string) {
   // Few-shot 版本：先提供几组完整示例，再让模型分类新的 message。
   // 示例的作用不是“存数据库”，而是临时放进上下文里给模型模仿。
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    max_tokens: 20,
+    model: model,
+    max_tokens: 2000,
     temperature: 0,
     messages: [
       { role: "system", content: rules },
       {
         role: "user",
-        content: "The API failed and then I got charged for the retry.",
+        content: "API 调用失败后，我又因为重试被扣费了。",
       },
       { role: "assistant", content: "billing" },
       {
         role: "user",
-        content: "The webhook returns 500 when I send test events.",
+        content: "我发送测试事件时，webhook 返回 500。",
       },
       { role: "assistant", content: "technical" },
       {
         role: "user",
-        content: "Can someone walk our team through plan options before we buy?",
+        content: "购买前可以有人带我们团队了解一下套餐选项吗？",
       },
       { role: "assistant", content: "sales" },
       {
         role: "user",
-        content: "I want to cancel my subscription because uploads keep failing.",
+        content: "我想取消订阅，因为上传一直失败。",
       },
       { role: "assistant", content: "billing" },
       { role: "user", content: message },
@@ -115,7 +118,7 @@ async function main() {
     const zeroShot = await classifyZeroShot(input);
     const fewShot = await classifyFewShot(input);
 
-    console.log("Input:");
+    console.log("输入：");
     console.log(input);
     console.log("\nZero-shot:", zeroShot);
     console.log("Few-shot: ", fewShot);

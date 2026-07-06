@@ -13,8 +13,10 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 // The shape we want back — defined once, used for both the tool schema and TS types
 interface JobPosting {
@@ -46,7 +48,7 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
   // 这个函数把“非结构化文本”转换成“结构化对象”。
   // 很多 agent 工作流都会先抽取结构，再做路由、检索、评估或入库。
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: model,
     messages: [
       {
         role: "user",
