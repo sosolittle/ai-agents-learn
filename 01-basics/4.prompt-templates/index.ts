@@ -12,8 +12,9 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 type ReviewPromptVars = {
   language: string;
