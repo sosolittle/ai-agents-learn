@@ -21,9 +21,28 @@ const dispatcher = useCharles ? new ProxyAgent(proxyUrl) : undefined;
 // undici 的 dispatcher 可以控制请求如何发出。
 // 传 ProxyAgent 后，请求会先经过 Charles，再转发到真实 API。
 
+export function normalizeChatCompletionsBaseURL(baseURL: string | undefined): string | undefined {
+    const xfyunResponsesBaseURL = "https://maas-coding-api.cn-huabei-1.xf-yun.com/v1";
+
+    if (baseURL === xfyunResponsesBaseURL || baseURL === `${xfyunResponsesBaseURL}/`) {
+        return "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2";
+    }
+
+    return baseURL;
+}
+
+const configuredBaseURL = process.env.OPENAI_BASE_URL;
+const baseURL = normalizeChatCompletionsBaseURL(configuredBaseURL);
+
+if (configuredBaseURL && baseURL !== configuredBaseURL) {
+    console.warn(
+        "[Charles Debug] xfyun Coding Plan /v1 is for Responses API; using /v2 for Chat Completions.",
+    );
+}
+
 console.log("[Charles Debug] USE_CHARLES =", process.env.USE_CHARLES);
 console.log("[Charles Debug] CHARLES_PROXY =", proxyUrl);
-console.log("[Charles Debug] OPENAI_BASE_URL =", process.env.OPENAI_BASE_URL);
+console.log("[Charles Debug] OPENAI_BASE_URL =", baseURL);
 
 const charlesFetch: typeof globalThis.fetch = async (input, init) => {
     // OpenAI SDK 允许传入自定义 fetch。
@@ -41,7 +60,7 @@ const charlesFetch: typeof globalThis.fetch = async (input, init) => {
 
 const client = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    baseURL: process.env.OPENAI_BASE_URL,
+    baseURL,
 
     ...(useCharles
         ? {

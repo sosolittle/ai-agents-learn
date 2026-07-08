@@ -17,10 +17,6 @@ import client from "./src/openai-charles-client";
 
 // const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-const isDeepSeekApi = process.env.OPENAI_BASE_URL?.includes("deepseek.com") ?? false;
-const toolChoice = isDeepSeekApi
-  ? undefined
-  : ({ type: "function", function: { name: "extract_job_posting" } } as const);
 
 // 我们希望模型返回的数据形状：定义一次，同时用于工具 schema 和 TS 类型。
 interface JobPosting {
@@ -56,7 +52,7 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
     messages: [
       {
         role: "user",
-        content: `请调用 extract_job_posting 工具，从下面这段职位描述中提取结构化信息：\n\n${text}`,
+        content: `请从下面这段职位描述中提取结构化信息：\n\n${text}`,
       },
     ],
     tools: [
@@ -105,10 +101,10 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
         },
       },
     ],
-    ...(toolChoice ? { tool_choice: toolChoice } : {}),
-    // OpenAI API 支持用 tool_choice 强制模型调用工具。
-    // DeepSeek 的部分思考模型会拒绝这个参数，所以这里改成只传 tools，
-    // 并在提示词里明确要求模型调用 extract_job_posting。
+    // 强制模型调用我们的工具，而不是返回自由文本。
+    tool_choice: { type: "function", function: { name: "extract_job_posting" } },
+    // 强制 tool_choice 后，模型不能只写一段说明文字。
+    // 它必须调用 extract_job_posting，并把字段放进 arguments。
   });
 
   const toolCall = response.choices[0].message.tool_calls?.[0];

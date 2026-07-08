@@ -29,6 +29,17 @@ npm install
 npm start
 ```
 
+如果使用讯飞星火 Coding Plan 的 OpenAI 兼容接口，这个示例调用的是
+`client.chat.completions.create`，所以 `.env` 中要使用 Chat Completions 地址：
+
+```bash
+OPENAI_BASE_URL=https://maas-coding-api.cn-huabei-1.xf-yun.com/v2
+OPENAI_MODEL=astron-code-latest
+```
+
+讯飞文档里 `https://maas-coding-api.cn-huabei-1.xf-yun.com/v1` 是给 Codex
+Responses wire API 使用的地址；直接用于这个 Chat Completions 示例会得到 404。
+
 ---
 
 ## 预期输出
