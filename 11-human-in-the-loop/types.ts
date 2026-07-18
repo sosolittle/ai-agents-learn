@@ -28,45 +28,54 @@ const CustomerIdSchema = z
 // ─────────────────────────────────────────────────────────────────────────────
 
 // A discriminated union on `toolName`. Each tool has its own argument shape, so
-// the wrong arguments for a tool fail validation. `.strict()` rejects any extra
-// field — including a permission field like `requiresApproval`, which the model
-// is never allowed to decide. The model proposes capability; the application
-// owns authorization.
+// the wrong arguments for a tool fail validation. `.strict()` is applied at BOTH
+// levels: the arguments object and the outer proposal object. The outer
+// `.strict()` is what rejects a hidden permission field like `requiresApproval`,
+// `isAuthorized`, or `allowed` — the model is never allowed to decide those.
+// The model proposes capability; the application owns authorization.
 export const ActionProposalSchema = z.discriminatedUnion("toolName", [
-  z.object({
-    toolName: z.literal("getOrderStatus"),
-    arguments: z.object({ orderId: OrderIdSchema }).strict(),
-    reason: z.string().min(1),
-  }),
-  z.object({
-    toolName: z.literal("refundOrder"),
-    arguments: z
-      .object({
-        orderId: OrderIdSchema,
-        amount: z.number().positive("refund amount must be greater than 0"),
-        currency: z.literal("EUR", {
-          errorMap: () => ({ message: 'currency must be "EUR"' }),
-        }),
-        reason: z.string().min(1),
-      })
-      .strict(),
-    reason: z.string().min(1),
-  }),
-  z.object({
-    toolName: z.literal("cancelSubscription"),
-    arguments: z
-      .object({
-        customerId: CustomerIdSchema,
-        reason: z.string().min(1),
-      })
-      .strict(),
-    reason: z.string().min(1),
-  }),
-  z.object({
-    toolName: z.literal("deleteProductionUsers"),
-    arguments: z.object({}).strict(),
-    reason: z.string().min(1),
-  }),
+  z
+    .object({
+      toolName: z.literal("getOrderStatus"),
+      arguments: z.object({ orderId: OrderIdSchema }).strict(),
+      reason: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      toolName: z.literal("refundOrder"),
+      arguments: z
+        .object({
+          orderId: OrderIdSchema,
+          amount: z.number().positive("refund amount must be greater than 0"),
+          currency: z.literal("EUR", {
+            errorMap: () => ({ message: 'currency must be "EUR"' }),
+          }),
+          reason: z.string().min(1),
+        })
+        .strict(),
+      reason: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      toolName: z.literal("cancelSubscription"),
+      arguments: z
+        .object({
+          customerId: CustomerIdSchema,
+          reason: z.string().min(1),
+        })
+        .strict(),
+      reason: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      toolName: z.literal("deleteProductionUsers"),
+      arguments: z.object({}).strict(),
+      reason: z.string().min(1),
+    })
+    .strict(),
 ]);
 export type ActionProposal = z.infer<typeof ActionProposalSchema>;
 
@@ -148,8 +157,10 @@ export const AuditEventTypeSchema = z.enum([
   "ACTION_EDITED",
   "ACTION_APPROVED",
   "ACTION_REJECTED",
+  "ACTION_DENIED",
   "ACTION_EXECUTED",
   "DUPLICATE_EXECUTION_BLOCKED",
+  "EXISTING_EXECUTION_RECOVERED",
 ]);
 export type AuditEventType = z.infer<typeof AuditEventTypeSchema>;
 

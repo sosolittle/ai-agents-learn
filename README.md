@@ -127,7 +127,7 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 
 | Pattern | What it demonstrates |
 |---|---|
-| [human-in-the-loop](./11-human-in-the-loop/) | An agent proposes a risky action, deterministic policy pauses it, a human approves, edits, or rejects it, and the approved action is revalidated and executed exactly once with an audit trail. |
+| [human-in-the-loop](./11-human-in-the-loop/) | An agent proposes a risky action, deterministic policy pauses it, a human approves, edits, or rejects it, and approved execution is revalidated, audited, and protected against duplicate runs. |
 
 *More patterns coming — durable execution, checkpointing, and workflow orchestration.*
 

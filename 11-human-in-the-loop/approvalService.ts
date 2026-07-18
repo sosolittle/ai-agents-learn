@@ -1,6 +1,7 @@
 import { appendAudit } from "./auditLog.js";
 import {
   findApproval,
+  findExecutionByApprovalId,
   loadApprovals,
   nextApprovalId,
   upsertApproval,
@@ -104,24 +105,41 @@ export function handleProposal(
   });
 
   if (policy.decision === "deny") {
-    // Forbidden: no executable record is ever created.
+    // Forbidden: no executable record is ever created. Record an explicit
+    // denial event so the refusal is visible in the audit trail.
+    appendAudit(paths, {
+      event: "ACTION_DENIED",
+      toolName: proposal.toolName,
+      metadata: { originalRequest, reason: policy.reason },
+    });
     return { kind: "denied", policy, toolName: proposal.toolName };
   }
 
   if (policy.decision === "auto_execute") {
+    // The policy itself authorizes this action, so it goes straight to
+    // `approved` — but NOT to `executed` until the tool actually succeeds. If
+    // execution throws, the record truthfully stays `approved`, never falsely
+    // `executed`.
     const now = nowIso();
-    const record: ApprovalRecord = {
+    const approved: ApprovalRecord = {
       id: nextApprovalId(paths),
       originalRequest,
       proposedAction,
-      status: "executed",
+      status: "approved",
       createdAt: now,
       updatedAt: now,
     };
-    upsertApproval(paths, record);
-    const execution = executeAction(paths, record);
+    upsertApproval(paths, approved);
+    appendAudit(paths, {
+      event: "ACTION_APPROVED",
+      approvalId: approved.id,
+      toolName: approved.proposedAction.toolName,
+      metadata: { authorizedBy: "policy" },
+    });
+
+    const execution = executeAction(paths, approved);
     const executed: ApprovalRecord = {
-      ...record,
+      ...approved,
       status: "executed",
       executionId: execution.executionId,
       updatedAt: nowIso(),
@@ -232,13 +250,22 @@ export interface ApproveResult {
 }
 
 /**
- * Approve a pending record and execute its tool exactly once.
+ * Approve a pending record: grant permission, then execute its tool once.
  *
- * Idempotency: a record already in the `executed` state is never executed
- * again. A duplicate approval is audited as DUPLICATE_EXECUTION_BLOCKED and the
- * record is returned unchanged, still `executed`. Before executing, the action
- * is re-validated and the policy is re-evaluated, so a record whose tool became
- * denied, or whose arguments drifted, cannot execute.
+ * State transition: `pending → approved → executed`. Permission is granted
+ * (and persisted as `approved`) BEFORE the tool runs, and the record only
+ * becomes `executed` after the tool succeeds — so the state is always truthful.
+ *
+ * Idempotency / recovery:
+ *  - a record already `executed` blocks the duplicate (DUPLICATE_EXECUTION_BLOCKED);
+ *  - if an execution already exists for this approval (e.g. a crash between
+ *    saving the execution and flipping the status), the existing result is
+ *    reconciled and reused instead of running the tool again.
+ *
+ * Before granting approval, the action is re-validated and the policy is
+ * re-evaluated: the tool must still be classified exactly `require_approval`, so
+ * a policy that drifted to `deny` or `auto_execute` cannot execute through this
+ * stored workflow.
  */
 export function approveApproval(paths: DataPaths, id: string): ApproveResult {
   const record = requireExisting(paths, id);
@@ -254,36 +281,75 @@ export function approveApproval(paths: DataPaths, id: string): ApproveResult {
     return { record, blocked: true };
   }
 
+  // Recovery: an execution already exists but the record never advanced to
+  // `executed`. Reconcile the record and reuse the existing result.
+  const priorExecution = findExecutionByApprovalId(paths, record.id);
+  if (priorExecution) {
+    const reconciled: ApprovalRecord = {
+      ...record,
+      status: "executed",
+      executionId: priorExecution.id,
+      updatedAt: nowIso(),
+    };
+    upsertApproval(paths, reconciled);
+    appendAudit(paths, {
+      event: "EXISTING_EXECUTION_RECOVERED",
+      approvalId: record.id,
+      toolName: record.proposedAction.toolName,
+      metadata: { executionId: priorExecution.id },
+    });
+    return {
+      record: reconciled,
+      execution: {
+        executionId: priorExecution.id,
+        result: priorExecution.result,
+        recovered: true,
+      },
+      blocked: false,
+    };
+  }
+
   if (record.status !== "pending") {
     throw new Error(
       `Approval ${id} is "${record.status}", not "pending". It cannot be approved.`
     );
   }
 
-  // Re-validate the action and re-evaluate the policy at execution time.
+  // Re-validate the action and re-evaluate the policy at approval time.
   ActionProposalSchema.parse({
     toolName: record.proposedAction.toolName,
     arguments: record.proposedAction.arguments,
     reason: record.proposedAction.reason,
   });
 
+  // The stored workflow must still match the current policy exactly. If the
+  // tool is no longer `require_approval`, the human-approval path is invalid.
   const policy = evaluatePolicy(record.proposedAction.toolName);
-  if (policy.decision === "deny") {
+  if (policy.decision !== "require_approval") {
     throw new Error(
-      `Approval ${id} cannot be executed: "${record.proposedAction.toolName}" is denied by policy.`
+      `Approval ${id} cannot continue because "${record.proposedAction.toolName}" is no longer classified as require_approval (now "${policy.decision}").`
     );
   }
 
+  // Grant permission first: pending → approved.
+  const approved: ApprovalRecord = {
+    ...record,
+    status: "approved",
+    updatedAt: nowIso(),
+  };
+  upsertApproval(paths, approved);
   appendAudit(paths, {
     event: "ACTION_APPROVED",
-    approvalId: record.id,
-    toolName: record.proposedAction.toolName,
+    approvalId: approved.id,
+    toolName: approved.proposedAction.toolName,
+    metadata: { authorizedBy: "human" },
   });
 
-  const execution = executeAction(paths, record);
+  // Execute from the approved record. The executor defends the boundary again.
+  const execution = executeAction(paths, approved);
 
   const executed: ApprovalRecord = {
-    ...record,
+    ...approved,
     status: "executed",
     executionId: execution.executionId,
     updatedAt: nowIso(),

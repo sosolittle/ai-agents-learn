@@ -9,12 +9,16 @@ import {
   handleProposal,
   rejectApproval,
 } from "../approvalService.js";
-import { loadApprovals, loadExecutions } from "../approvalStore.js";
+import {
+  loadApprovals,
+  loadExecutions,
+  upsertApproval,
+} from "../approvalStore.js";
 import { loadAudit } from "../auditLog.js";
 import type { DataPaths } from "../config.js";
 import { executeAction } from "../executor.js";
 import { evaluatePolicy } from "../policy.js";
-import type { ApprovalRecord } from "../types.js";
+import { ActionProposalSchema, type ApprovalRecord } from "../types.js";
 
 // These tests exercise the workflow with NO model calls and NO OpenAI key.
 // Every test gets its own temporary data directory so the committed demo files
@@ -237,6 +241,136 @@ test("malformed persisted JSON produces a clear error", () => {
   const paths = tempPaths();
   writeFileSync(paths.approvals, "{ this is not valid json", "utf8");
   assert.throws(() => loadApprovals(paths), /malformed JSON/);
+});
+
+// ── control-boundary tests ───────────────────────────────────────────────────
+
+// 16: a pending refund cannot bypass human approval through the executor.
+test("pending refund cannot bypass human approval through the executor", () => {
+  const paths = tempPaths();
+  const { record } = handleProposal(paths, REFUND_REQUEST, refundProposal()) as {
+    record: ApprovalRecord;
+  };
+  assert.equal(record.status, "pending");
+  assert.throws(() => executeAction(paths, record), /human approval|required.*approved/i);
+  assert.equal(loadExecutions(paths).length, 0);
+});
+
+// 17: a rejected refund cannot execute directly through the executor.
+test("rejected refund cannot execute directly through the executor", () => {
+  const paths = tempPaths();
+  const { record } = handleProposal(paths, REFUND_REQUEST, refundProposal()) as {
+    record: ApprovalRecord;
+  };
+  const rejected = rejectApproval(paths, record.id, "Customer is not eligible");
+  assert.equal(rejected.status, "rejected");
+  assert.throws(() => executeAction(paths, rejected), /human approval|approved/i);
+  assert.equal(loadExecutions(paths).length, 0);
+});
+
+// 18: the executor accepts an approved record (the other side of boundary 2).
+test("executor accepts an approved refund record", () => {
+  const paths = tempPaths();
+  const { record } = handleProposal(paths, REFUND_REQUEST, refundProposal()) as {
+    record: ApprovalRecord;
+  };
+  const approved: ApprovalRecord = { ...record, status: "approved" };
+  upsertApproval(paths, approved);
+  const outcome = executeAction(paths, approved);
+  assert.equal(outcome.recovered, false);
+  assert.equal(outcome.result.status, "processed");
+  assert.equal(loadExecutions(paths).length, 1);
+});
+
+// 19: a model-supplied permission field is rejected by the proposal schema.
+test("proposal rejects model-supplied permission fields", () => {
+  assert.throws(() =>
+    ActionProposalSchema.parse({ ...refundProposal(), requiresApproval: false })
+  );
+  assert.throws(() =>
+    ActionProposalSchema.parse({ ...refundProposal(), isAuthorized: true })
+  );
+});
+
+// 20: an existing execution is reused rather than duplicated (crash recovery).
+test("an existing execution is reused rather than duplicated", () => {
+  const paths = tempPaths();
+  const { record } = handleProposal(paths, REFUND_REQUEST, refundProposal()) as {
+    record: ApprovalRecord;
+  };
+  // Simulate a crash: the record is approved and the tool ran (an execution is
+  // saved), but the status was never flipped to "executed".
+  const approved: ApprovalRecord = { ...record, status: "approved" };
+  upsertApproval(paths, approved);
+  const firstRun = executeAction(paths, approved);
+  assert.equal(firstRun.recovered, false);
+
+  // Retrying approval must NOT call the tool again.
+  const retry = approveApproval(paths, record.id);
+  assert.equal(retry.blocked, false);
+  assert.equal(retry.execution?.recovered, true);
+  assert.equal(retry.execution?.executionId, firstRun.executionId);
+  assert.equal(retry.record.status, "executed");
+  assert.equal(loadExecutions(paths).length, 1);
+});
+
+// 21: a failed auto-execution is not left marked executed.
+test("failed auto-execution is not left marked executed", () => {
+  const paths = tempPaths();
+  // getOrderStatus auto-executes, but ORD-999 does not exist, so the tool throws.
+  assert.throws(
+    () =>
+      handleProposal(paths, "Check the status of order ORD-999.", {
+        toolName: "getOrderStatus",
+        arguments: { orderId: "ORD-999" },
+        reason: "Look up the order status.",
+      }),
+    /Unknown order/
+  );
+  // A record may exist as "approved", but never as "executed", and no execution
+  // record was written.
+  assert.ok(loadApprovals(paths).every((r) => r.status !== "executed"));
+  assert.equal(loadExecutions(paths).length, 0);
+});
+
+// 22: a policy that no longer says require_approval blocks the approval path.
+test("policy mismatch blocks approval", () => {
+  const paths = tempPaths();
+  // A stored pending approval whose tool is classified auto_execute, not
+  // require_approval — a stale workflow the current policy no longer matches.
+  const now = new Date().toISOString();
+  const stale: ApprovalRecord = {
+    id: "APR-001",
+    originalRequest: "Check the status of order ORD-001.",
+    proposedAction: {
+      toolName: "getOrderStatus",
+      arguments: { orderId: "ORD-001" },
+      reason: "Look up the order status.",
+    },
+    status: "pending",
+    createdAt: now,
+    updatedAt: now,
+  };
+  upsertApproval(paths, stale);
+  assert.throws(
+    () => approveApproval(paths, "APR-001"),
+    /no longer classified as require_approval/
+  );
+  assert.equal(loadExecutions(paths).length, 0);
+});
+
+// 23: a denied action writes ACTION_DENIED and creates no records.
+test("denied action writes ACTION_DENIED and creates no records", () => {
+  const paths = tempPaths();
+  handleProposal(paths, "Delete all production users.", {
+    toolName: "deleteProductionUsers",
+    arguments: {},
+    reason: "User asked to delete all production users.",
+  });
+  const events = loadAudit(paths).map((e) => e.event);
+  assert.deepEqual(events, ["ACTION_PROPOSED", "POLICY_EVALUATED", "ACTION_DENIED"]);
+  assert.equal(loadApprovals(paths).length, 0);
+  assert.equal(loadExecutions(paths).length, 0);
 });
 
 // ── summary ──────────────────────────────────────────────────────────────────

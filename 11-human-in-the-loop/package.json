@@ -1,7 +1,7 @@
 {
   "name": "11-human-in-the-loop",
   "version": "1.0.0",
-  "description": "Human-in-the-loop approval from scratch: an agent proposes, policy gates, a human authorizes, the tool executes exactly once",
+  "description": "Human-in-the-loop approval from scratch: an agent proposes, policy gates, a human authorizes, and execution is validated, audited, and protected against duplicate runs",
   "type": "module",
   "scripts": {
     "start": "tsx index.ts",

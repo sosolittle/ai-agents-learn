@@ -101,6 +101,15 @@ function main(): void {
         );
         break;
       }
+      if (outcome.execution?.recovered) {
+        printSection(`Approve ${id}`);
+        console.log(
+          `An execution already existed for this approval (${outcome.execution.executionId}). ` +
+            "Reused it — the tool was not called again. Record reconciled to executed."
+        );
+        console.log(prettyJson(outcome.execution.result));
+        break;
+      }
       printSection(`Approved ${id}`);
       console.log(`Executed as ${outcome.execution?.executionId}. Mock result:`);
       console.log(prettyJson(outcome.execution?.result));

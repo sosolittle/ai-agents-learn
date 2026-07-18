@@ -56,6 +56,23 @@ export function saveExecution(paths: DataPaths, execution: ExecutionRecord): voi
   writeJsonArray(paths.executions, executions);
 }
 
+/**
+ * Find an execution already recorded for an approval, if any.
+ *
+ * This is the anchor for local idempotency: the execution record is the durable
+ * proof that a tool already ran for this approval. If the process died after the
+ * execution was saved but before the approval flipped to `executed`, this lets a
+ * retry recover the existing result instead of running the tool again.
+ */
+export function findExecutionByApprovalId(
+  paths: DataPaths,
+  approvalId: string
+): ExecutionRecord | undefined {
+  return loadExecutions(paths).find(
+    (execution) => execution.approvalId === approvalId
+  );
+}
+
 export function nextExecutionId(paths: DataPaths): string {
   return nextSequentialId(
     "EXE",
