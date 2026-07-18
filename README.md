@@ -123,7 +123,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [routing](./10-routing/) | Router agent that chooses the smallest safe execution path: direct answer, tool use, research, multi-agent workflow, human approval, or refusal. |
 
-*More patterns coming — human approval, planning, and workflow orchestration.*
+### 11 — Human-in-the-Loop
+
+| Pattern | What it demonstrates |
+|---|---|
+| [human-in-the-loop](./11-human-in-the-loop/) | An agent proposes a risky action, deterministic policy pauses it, a human approves, edits, or rejects it, and the approved action is revalidated and executed exactly once with an audit trail. |
+
+*More patterns coming — durable execution, checkpointing, and workflow orchestration.*
 
 ---
 
