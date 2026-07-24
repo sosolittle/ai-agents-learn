@@ -2,6 +2,77 @@
 
 > Capability is not permission.
 
+## 中文学习导读
+
+第 10 章解决的是“这个请求应该走哪条路线”，本章继续实现其中的
+`human_approval` 路线。这里最重要的不是 CLI 命令本身，而是建立一个明确的
+控制边界：
+
+- **模型只提出动作**：选择工具并生成参数，例如“调用 `refundOrder`，退款 79 欧元”。
+- **策略代码决定风险等级**：只读查询可自动执行，退款和取消订阅需要审批，破坏性动作直接禁止。
+- **人类只审批具体动作**：审核人看到确切的工具名和参数后，可以修改参数、批准或拒绝。
+- **执行器再次守门**：即使有人绕过正常 service 直接调用 executor，未审批动作仍然无法执行。
+- **持久化记录负责恢复**：当前进程结束后，审批可以由另一个 CLI 进程继续，不依赖内存中的等待。
+
+可以把本章记成一句话：
+
+> 模型负责 capability（能做什么），应用和人类负责 permission（是否允许做）。
+
+### 推荐阅读顺序
+
+建议不要一开始就陷入 `approvalService.ts` 的全部分支，而按下面顺序阅读：
+
+1. **`types.ts`**：先认识工具提案、审批状态、执行记录和审计事件的数据结构。
+2. **`actionAgent.ts`**：确认模型只输出 `toolName + arguments + reason`，不拥有授权字段。
+3. **`policy.ts`**：看每个工具如何确定性映射到三种 policy decision。
+4. **`index.ts`**：看提案怎样进入策略门，并在 `pending` 处暂停。
+5. **`approvalService.ts`**：跟踪 edit / approve / reject 以及状态迁移。
+6. **`executor.ts` 与 `tools.ts`**：看副作用前的最后检查、参数复验和执行去重。
+7. **`approvalStore.ts`、`auditLog.ts`、`cli.ts`**：理解跨进程恢复与可审计性。
+8. **`tests/runTests.ts`**：用反向案例验证控制边界无法被绕过。
+
+### 四类对象不要混淆
+
+| 对象 | 回答的问题 | 典型字段 | 是否由模型决定 |
+|---|---|---|---|
+| `ActionProposal` | “可以调用什么工具、参数是什么？” | `toolName`, `arguments`, `reason` | 是，但必须通过 Zod |
+| `PolicyResult` | “这个工具允许怎样执行？” | `auto_execute`, `require_approval`, `deny` | 否，由代码表决定 |
+| `ApprovalRecord` | “这次申请当前走到哪一步？” | `pending`, `approved`, `rejected`, `executed` | 否，由工作流推进 |
+| `ExecutionRecord` | “工具是否真的执行过、结果是什么？” | `approvalId`, `result`, `executedAt` | 否，由 executor 写入 |
+
+`ApprovalRecord.status === "approved"` 只表示权限已经授予，不表示工具已经成功。
+只有存在对应的 `ExecutionRecord`，并且审批状态推进到 `executed`，才能表示本章
+定义的执行流程已完成。
+
+### 三道关键安全门
+
+本章不是只在一个 `if` 里检查审批，而是在不同边界重复验证：
+
+1. **提案边界**：`ActionProposalSchema` 拒绝未知工具、错误参数和
+   `requiresApproval` 等越权字段。
+2. **策略与审批边界**：`approvalService` 根据当前 policy 创建或推进审批，
+   人工编辑后会重新验证完整动作。
+3. **执行边界**：`executor` 重新计算 policy，并要求
+   `require_approval` 动作的记录必须已经是 `approved`。
+
+这就是纵深防御：上游检查存在缺陷时，下游边界仍然能够阻止危险副作用。
+
+### 状态与事实为什么分开保存
+
+审批状态和执行事实分别存储，是为了处理下面这个崩溃窗口：
+
+```text
+pending
+  ↓ 人工批准并落盘
+approved
+  ↓ 工具成功，ExecutionRecord 已落盘
+（进程在更新 ApprovalRecord 之前崩溃）
+```
+
+重试时，系统会通过 `approvalId` 找到已有的 `ExecutionRecord`，复用结果并把审批
+状态补齐为 `executed`，而不是再次退款。这个机制提供的是**单机 JSON store 上的
+本地幂等性**；它不等于分布式系统中的 exactly-once。
+
 ## Why this exists
 
 Module 10 answered *which path should this request take?* The router could send a risky request to a "human approval" lane — but that lane was just a mock handler that printed a message. This module builds the lane for real.

@@ -1,3 +1,12 @@
+// ============================================================
+//  Configuration：集中管理模型参数和持久化路径
+//
+//  学习目标：
+//  1. 让所有命令使用同一组数据文件，不受启动目录影响
+//  2. 延迟创建 OpenAI client，使不调用模型的 CLI/测试无需 API Key
+//  3. 用 DataPaths 注入临时路径，提高核心流程的可测试性
+// ============================================================
+
 import OpenAI from "openai";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +46,8 @@ export function defaultPaths(): DataPaths {
 let _client: OpenAI | null = null;
 
 export function getClient(): OpenAI {
+  // Lazy initialization：只有 proposeAction 真正运行时才读取 OPENAI_API_KEY。
+  // approvals/edit/approve/test 都不会因为导入 config.ts 就创建网络客户端。
   if (!_client) {
     _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }

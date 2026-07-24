@@ -1,3 +1,13 @@
+// ============================================================
+//  Executor：副作用发生前的最后一道安全门
+//
+//  学习目标：
+//  1. 不信任上游已检查过的结论，在执行边界再次校验策略和状态
+//  2. 用 approvalId 查找已有执行，阻止重复副作用
+//  3. 区分“本地幂等恢复”和“分布式 exactly-once”
+//  4. 只在工具成功后写入执行记录和 ACTION_EXECUTED
+// ============================================================
+
 import { appendAudit } from "./auditLog.js";
 import {
   findExecutionByApprovalId,
@@ -40,6 +50,8 @@ export function executeAction(
 ): ExecutionOutcome {
   const { toolName, arguments: args } = approval.proposedAction;
   const policy = evaluatePolicy(toolName);
+  // 不接收调用方传入的 policy 结果，而是根据 toolName 现场重新计算，
+  // 避免调用方伪造或复用已经过期的授权结论。
 
   // Boundary 1: forbidden tools never execute.
   if (policy.decision === "deny") {
@@ -71,6 +83,8 @@ export function executeAction(
 
   const executionId = nextExecutionId(paths);
   const resultId = nextResultId(paths, RESULT_ID_PREFIX[toolName], toolName);
+  // executionId 标识“这次工具运行”；resultId 标识业务结果（如退款单）。
+  // 两者分开可以让工作流记录与下游业务记录各自拥有稳定标识。
 
   // runTool re-validates the arguments against the tool schema before calling.
   const result = runTool(toolName, args, resultId);
@@ -83,6 +97,8 @@ export function executeAction(
     result,
     executedAt: nowIso(),
   });
+  // 先持久化执行结果，再写审计事件。之后审批服务会把 approval 状态推进
+  // 到 executed；若进程恰好在中间崩溃，重试时会通过 execution 记录恢复。
 
   appendAudit(paths, {
     event: "ACTION_EXECUTED",

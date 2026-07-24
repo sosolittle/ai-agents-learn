@@ -1,3 +1,12 @@
+// ============================================================
+//  Action Proposal Agent：只描述“做什么”，不决定“能不能做”
+//
+//  学习目标：
+//  1. 把模型职责限制为选择工具和生成参数
+//  2. 用严格 JSON Schema 阻止模型夹带授权字段
+//  3. 理解 prompt 约束用于引导输出，Zod 校验才是程序边界
+// ============================================================
+
 import "dotenv/config";
 
 import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "./config.js";
@@ -41,18 +50,24 @@ Return a JSON object with exactly these fields:
 }`;
 
 export async function proposeAction(request: string): Promise<ActionProposal> {
+  // 本章节唯一一次模型调用发生在这里。后续 policy、审批状态迁移和执行
+  // 全部由普通 TypeScript 代码完成，因此它们可重复、可测试、可审计。
   const response = await getClient().chat.completions.create({
     model: MODEL,
     temperature: TEMPERATURE,
     max_tokens: MAX_TOKENS,
     response_format: { type: "json_object" },
     messages: [
+      // system 定义角色边界；user 只携带当前业务请求，避免把权限逻辑
+      // 动态拼进用户消息后交给模型自行判断。
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: `User request: ${request}` },
     ],
   });
 
   const raw = response.choices[0].message.content ?? "";
+  // response_format 只能提高返回 JSON 的概率；它不能替代业务校验。
+  // safeJsonParse 会先解析 JSON，再用 ActionProposalSchema 检查工具和参数。
   return safeJsonParse<ActionProposal>(
     raw,
     "Action Proposal Agent",

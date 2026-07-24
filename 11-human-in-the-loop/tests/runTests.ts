@@ -1,3 +1,15 @@
+// ============================================================
+//  第十一章测试：验证控制边界，而不是验证模型措辞
+//
+//  测试重点：
+//  1. 三种 policy 决策是否稳定
+//  2. pending / approved / executed / rejected 状态迁移是否正确
+//  3. 未审批、已拒绝和 deny 动作是否无法绕过 executor
+//  4. 重复审批与崩溃恢复是否会复用已有 execution
+//
+//  测试不调用模型：模型输出可能变化，但安全不变量必须由确定性测试保证。
+// ============================================================
+
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +37,8 @@ import { ActionProposalSchema, type ApprovalRecord } from "../types.js";
 // under ./data are never touched.
 
 function tempPaths(): DataPaths {
+  // 每个测试创建独立目录，既避免测试之间相互污染，也不会改动 data/ 下的
+  // 演示审批单。DataPaths 注入是实现这种隔离的关键。
   const dir = mkdtempSync(path.join(tmpdir(), "hitl-test-"));
   return {
     approvals: path.join(dir, "approvals.json"),
@@ -36,6 +50,7 @@ function tempPaths(): DataPaths {
 const REFUND_REQUEST = "Refund €79.00 for order ORD-001 because the package arrived damaged.";
 
 function refundProposal(amount = 79) {
+  // 直接构造合法提案，跳过模型，只测试模型之后的控制链。
   return {
     toolName: "refundOrder",
     arguments: {
@@ -54,6 +69,7 @@ let passed = 0;
 let failed = 0;
 
 function test(name: string, fn: () => void): void {
+  // 轻量 runner 让章节保持零测试框架依赖；失败会统一累计并设置退出码。
   try {
     fn();
     passed++;
@@ -68,6 +84,7 @@ function test(name: string, fn: () => void): void {
 console.log("\nHuman-in-the-Loop — tests\n");
 
 // 1–4: deterministic policy decisions.
+// 第一组先锁定工具与策略的映射；一旦误把退款改成 auto_execute，测试立即失败。
 test("getOrderStatus receives auto_execute", () => {
   assert.equal(evaluatePolicy("getOrderStatus").decision, "auto_execute");
 });
@@ -82,6 +99,7 @@ test("deleteProductionUsers receives deny", () => {
 });
 
 // 5: a refund proposal creates a pending approval and does not execute.
+// “创建审批单”和“没有执行记录”必须同时成立，才能证明流程真的暂停了。
 test("refund proposal creates a pending approval and does not execute", () => {
   const paths = tempPaths();
   const outcome = handleProposal(paths, REFUND_REQUEST, refundProposal());
@@ -215,6 +233,7 @@ test("approval data survives store reloading", () => {
 });
 
 // 14: expected audit events are written in the correct lifecycle.
+// 审计测试不仅检查事件是否存在，还检查顺序，确保因果链可以被可靠重放。
 test("expected audit events are written in the correct lifecycle", () => {
   const paths = tempPaths();
   const { record } = handleProposal(paths, REFUND_REQUEST, refundProposal()) as {
@@ -244,6 +263,8 @@ test("malformed persisted JSON produces a clear error", () => {
 });
 
 // ── control-boundary tests ───────────────────────────────────────────────────
+// 下面不是普通 happy path，而是主动尝试绕过审批边界。
+// 安全代码既要证明“合法动作能执行”，也要证明“非法路径执行不了”。
 
 // 16: a pending refund cannot bypass human approval through the executor.
 test("pending refund cannot bypass human approval through the executor", () => {
@@ -300,6 +321,7 @@ test("an existing execution is reused rather than duplicated", () => {
   };
   // Simulate a crash: the record is approved and the tool ran (an execution is
   // saved), but the status was never flipped to "executed".
+  // 这里手动制造 approved + execution 已存在的中间态，模拟真实崩溃窗口。
   const approved: ApprovalRecord = { ...record, status: "approved" };
   upsertApproval(paths, approved);
   const firstRun = executeAction(paths, approved);
@@ -376,4 +398,5 @@ test("denied action writes ACTION_DENIED and creates no records", () => {
 // ── summary ──────────────────────────────────────────────────────────────────
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
+// 让 npm test 在任一断言失败时返回非零状态，便于自动化环境识别失败。
 if (failed > 0) process.exit(1);

@@ -1,3 +1,13 @@
+// ============================================================
+//  第十一章数据契约：把自然语言流程变成可验证状态
+//
+//  学习目标：
+//  1. 用 discriminated union 绑定“工具名”和“对应参数”
+//  2. 区分模型提案、审批记录、执行记录、审计事件四类对象
+//  3. 理解 TypeScript 类型只在编译期存在，Zod Schema 负责运行时校验
+//  4. 用严格对象拒绝未知字段，防止模型越权声明权限
+// ============================================================
+
 import { z } from "zod";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -34,6 +44,8 @@ const CustomerIdSchema = z
 // `isAuthorized`, or `allowed` — the model is never allowed to decide those.
 // The model proposes capability; the application owns authorization.
 export const ActionProposalSchema = z.discriminatedUnion("toolName", [
+  // toolName 是判别字段。Zod 先看工具名，再选择唯一对应的参数 Schema；
+  // 因此 refundOrder 不可能误带 cancelSubscription 的参数结构。
   z
     .object({
       toolName: z.literal("getOrderStatus"),
@@ -108,6 +120,10 @@ export const ApprovalStatusSchema = z.enum([
   "executed",
 ]);
 export type ApprovalStatus = z.infer<typeof ApprovalStatusSchema>;
+// 正常人工审批路径：
+// pending（待审核）→ approved（已授权）→ executed（已执行）
+//                    ↘ rejected（已拒绝）
+// approved 与 executed 必须分开：授权成功不代表副作用已经成功完成。
 
 // The action as stored on the record. Arguments are kept as an open record here
 // because a record can hold any tool's arguments; the exact shape is
@@ -121,6 +137,7 @@ export const ProposedActionSchema = z.object({
 export type ProposedAction = z.infer<typeof ProposedActionSchema>;
 
 export const ApprovalRecordSchema = z.object({
+  // 审批记录回答“这项动作当前走到哪一步”，它是工作流状态。
   id: z.string(),
   originalRequest: z.string(),
   proposedAction: ProposedActionSchema,
@@ -137,6 +154,8 @@ export type ApprovalRecord = z.infer<typeof ApprovalRecordSchema>;
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ExecutionRecordSchema = z.object({
+  // 执行记录回答“工具是否已经真正运行过以及结果是什么”。
+  // approvalId 将一次执行绑定到一张审批单，是本地幂等恢复的依据。
   id: z.string(),
   approvalId: z.string(),
   toolName: ToolNameSchema,
@@ -165,6 +184,8 @@ export const AuditEventTypeSchema = z.enum([
 export type AuditEventType = z.infer<typeof AuditEventTypeSchema>;
 
 export const AuditEventSchema = z.object({
+  // 审计事件是只追加的时间线，不承担当前状态查询；
+  // 当前状态看 ApprovalRecord，历史过程看 AuditEvent。
   event: AuditEventTypeSchema,
   timestamp: z.string(),
   approvalId: z.string().optional(),

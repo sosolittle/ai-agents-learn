@@ -1,3 +1,13 @@
+// ============================================================
+//  Approval CLI：在不同进程中恢复并推进人工审批
+//
+//  学习目标：
+//  1. 用 list / edit / approve / reject 操作持久化审批单
+//  2. 理解 CLI 只是输入适配层，所有业务规则仍在 approvalService
+//  3. 观察人工审批不是阻塞式 readline，而是可暂停、可恢复的工作流
+//  4. 通过 audit 命令查看完整生命周期
+// ============================================================
+
 import {
   approveApproval,
   editApproval,
@@ -27,6 +37,8 @@ function parseArgs(argv: string[]): ParsedArgs {
   for (let i = 0; i < argv.length; i++) {
     const token = argv[i];
     if (token.startsWith("--")) {
+      // 同时支持 --amount=49 与 --amount 49。
+      // 所有 flag 先保留为字符串，字段保护、类型转换和 Schema 校验交给 service。
       const body = token.slice(2);
       const eq = body.indexOf("=");
       if (eq !== -1) {
@@ -54,11 +66,14 @@ function requireId(positionals: string[], command: string): string {
 
 function main(): void {
   const paths = defaultPaths();
+  // npm run approve -- APR-001 最终会形成：
+  // process.argv.slice(2) === ["approve", "APR-001"]。
   const [command, ...rest] = process.argv.slice(2);
   const { positionals, flags } = parseArgs(rest);
 
   switch (command) {
     case "list": {
+      // list 只读取持久化记录，不调用模型，也不改变审批状态。
       const approvals = loadApprovals(paths);
       printSection("Approvals");
       if (approvals.length === 0) {
@@ -81,6 +96,7 @@ function main(): void {
       // All flags are passed through as argument edits; the service rejects any
       // protected field and re-validates the merged arguments.
       const { before, after } = editApproval(paths, id, flags);
+      // CLI 展示 before/after，让审核人确认实际写入的参数变化。
       printSection(`Edited ${id}`);
       console.log("Before:");
       console.log(prettyJson(before));
@@ -93,6 +109,9 @@ function main(): void {
     case "approve": {
       const id = requireId(positionals, "approve");
       const outcome = approveApproval(paths, id);
+      // blocked 与 recovered 都不会再次调用工具：
+      // blocked 表示审批单已经是 executed；
+      // recovered 表示执行记录存在，但审批状态需要补齐。
       if (outcome.blocked) {
         printSection(`Approve ${id}`);
         console.log(
@@ -127,6 +146,7 @@ function main(): void {
     }
 
     case "audit": {
+      // 审计命令输出追加式事件时间线；它不根据当前 approval 状态反推历史。
       const events = loadAudit(paths);
       printSection("Audit log");
       if (events.length === 0) {
@@ -164,6 +184,7 @@ function main(): void {
 try {
   main();
 } catch (error) {
+  // CLI 将 service 的明确错误转成非零退出码，方便脚本或 CI 判断操作失败。
   console.error(`\nError: ${(error as Error).message}`);
   process.exitCode = 1;
 }

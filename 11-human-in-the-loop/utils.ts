@@ -1,3 +1,12 @@
+// ============================================================
+//  Utilities：校验边界、JSON 持久化、ID 与终端输出
+//
+//  学习目标：
+//  1. 将“解析 JSON”和“验证业务结构”作为两个明确步骤
+//  2. 数据损坏时快速失败，不静默清空审批或审计记录
+//  3. 用确定性顺序 ID 让演示输出容易观察和测试
+// ============================================================
+//
 // Small helpers shared across the module: model-output validation, JSON-file
 // persistence, ID generation, and console formatting.
 
@@ -15,6 +24,8 @@ export function safeJsonParse<T>(
   label: string,
   schema: z.ZodType<T>
 ): T {
+  // parsed 必须先保持 unknown；只有通过 schema 后才能成为 T。
+  // 直接写 `JSON.parse(raw) as T` 只是在骗过编译器，没有运行时保护。
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -48,6 +59,8 @@ export function readJsonArray<T>(
   schema: z.ZodType<T>,
   label: string
 ): T[] {
+  // 缺失文件表示“尚无数据”，但已存在却损坏的文件表示真实故障；
+  // 两者不能都返回 []，否则会静默丢失审批和审计历史。
   if (!existsSync(filePath)) return [];
 
   const raw = readFileSync(filePath, "utf8").trim();
@@ -75,6 +88,7 @@ export function readJsonArray<T>(
 
 /** Write a JSON array store to disk as formatted JSON, creating the folder if needed. */
 export function writeJsonArray<T>(filePath: string, items: T[]): void {
+  // 统一格式化并补换行，让持久化文件可以直接阅读和进行 git diff。
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(items, null, 2)}\n`, "utf8");
 }
@@ -85,6 +99,7 @@ export function writeJsonArray<T>(filePath: string, items: T[]): void {
  * even if some records were removed.
  */
 export function nextSequentialId(prefix: string, existingIds: string[]): string {
+  // 取最大后缀而不是数组长度：即使中间记录被移除，也不会重用旧 ID。
   const pattern = new RegExp(`^${prefix}-(\\d+)$`);
   let max = 0;
   for (const id of existingIds) {

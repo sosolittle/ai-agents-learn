@@ -1,3 +1,13 @@
+// ============================================================
+//  Policy Gate：用确定性代码决定执行权限
+//
+//  学习目标：
+//  1. 理解 policy 是授权边界，不是另一个 Agent
+//  2. 用 Record<ToolName, ...> 强制每个工具都有明确策略
+//  3. 掌握 auto_execute / require_approval / deny 三种决策
+//  4. 学会默认拒绝（fail closed），避免新工具意外获得权限
+// ============================================================
+
 import type { PolicyDecision, PolicyResult, ToolName } from "./types.js";
 
 // The policy gate. This is the heart of the module's lesson: capability is not
@@ -8,6 +18,8 @@ import type { PolicyDecision, PolicyResult, ToolName } from "./types.js";
 // It is deterministic, typed, and trivial to extend: add a tool, add a policy.
 // The decision never depends on the model's explanation of what it wants to do.
 const TOOL_POLICIES: Record<ToolName, PolicyResult> = {
+  // Record 的键是 ToolName：以后给 ToolNameSchema 新增工具却忘记配置策略时，
+  // TypeScript 会直接报错，而不是让新工具默认为“可以执行”。
   // Read-only lookup, no side effects: safe to run without a human.
   getOrderStatus: {
     decision: "auto_execute",
@@ -38,6 +50,8 @@ const TOOL_POLICIES: Record<ToolName, PolicyResult> = {
  */
 export function evaluatePolicy(toolName: ToolName): PolicyResult {
   const policy = TOOL_POLICIES[toolName];
+  // 按当前静态类型，这个分支通常不会发生；保留运行时兜底，是因为真实系统
+  // 可能收到旧数据、外部输入，或未来通过非 TypeScript 边界调用这里。
   if (!policy) {
     return {
       decision: "deny" satisfies PolicyDecision,

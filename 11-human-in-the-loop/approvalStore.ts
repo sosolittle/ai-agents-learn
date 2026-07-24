@@ -1,3 +1,13 @@
+// ============================================================
+//  Approval Store：用 JSON 文件保存可恢复的工作流状态
+//
+//  学习目标：
+//  1. 区分 approval record（流程状态）与 execution record（执行事实）
+//  2. 理解为什么 pending 必须持久化，不能只放在当前进程内存中
+//  3. 用依赖注入的 DataPaths 隔离演示数据和测试数据
+//  4. 用持久化 execution 记录作为本地幂等依据
+// ============================================================
+
 import type { DataPaths } from "./config.js";
 import {
   ApprovalRecordSchema,
@@ -13,6 +23,8 @@ import { nextSequentialId, readJsonArray, writeJsonArray } from "./utils.js";
 // so tests can point at temporary files.
 
 export function loadApprovals(paths: DataPaths): ApprovalRecord[] {
+  // 每次读取都会通过 ApprovalRecordSchema 验证整个数组，
+  // 损坏或过期的数据会明确报错，而不是悄悄当成空列表。
   return readJsonArray(paths.approvals, ApprovalRecordSchema, "Approvals");
 }
 
@@ -29,6 +41,7 @@ export function findApproval(
 
 /** Insert a new record or replace an existing one by ID, preserving the rest. */
 export function upsertApproval(paths: DataPaths, record: ApprovalRecord): void {
+  // 同一个审批 ID 在状态迁移时原位更新；其他审批记录保持顺序和内容不变。
   const records = loadApprovals(paths);
   const index = records.findIndex((existing) => existing.id === record.id);
   if (index === -1) {
@@ -51,6 +64,7 @@ export function loadExecutions(paths: DataPaths): ExecutionRecord[] {
 }
 
 export function saveExecution(paths: DataPaths, execution: ExecutionRecord): void {
+  // execution 是已经发生的事实，只追加、不覆盖。
   const executions = loadExecutions(paths);
   executions.push(execution);
   writeJsonArray(paths.executions, executions);
@@ -89,6 +103,7 @@ export function nextResultId(
   prefix: string,
   toolName: ExecutionRecord["toolName"]
 ): string {
+  // 只从同一工具的历史结果推导序号，避免退款 REF 与取消 CAN 相互影响。
   const resultIds = loadExecutions(paths)
     .filter((execution) => execution.toolName === toolName)
     .map((execution) => String(execution.result.refundId ?? execution.result.cancellationId ?? ""));
