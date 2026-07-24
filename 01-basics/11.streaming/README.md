@@ -1,29 +1,40 @@
-# Streaming
+# 流式输出
 
-Streaming lets your app receive an LLM response piece by piece as it is generated instead of waiting for the full message.
+流式输出（streaming）让应用在模型生成内容的同时，一小块一小块地接收结果，而不是等完整回答生成后再一次性拿到全部文字。
 
----
-
-## What this demonstrates
-
-- A normal non-streaming call
-- A streaming call with `stream: true`
-- Iterating through stream events with `for await`
-- Printing partial text chunks as they arrive
+它通常不会让模型更早完成整个回答，但会让用户更早看到第一段内容。
 
 ---
 
-## Why this matters
+## 这个示例演示什么
 
-Streaming improves perceived latency. Users see the response begin quickly, even when the full answer takes longer. The tradeoff is that your code must handle partial state carefully.
+- 普通的非流式调用
+- 使用 `stream: true` 发起流式调用
+- 使用 `for await...of` 逐个读取流式事件
+- 从 `delta.content` 中取出新增的文本片段
+- 使用 `process.stdout.write` 在同一行连续打印内容
+- 一边展示文本，一边把片段拼接成完整回答
 
 ---
 
-## Run it
+## 为什么这很重要
+
+流式输出可以改善用户感受到的等待时间。即使完整回答仍然需要几秒钟，用户也能较早看到内容开始出现，不必一直面对空白界面。
+
+代价是应用必须正确处理“尚未完成的结果”。流进行到一半时，当前文字只是部分状态，不能直接当作最终答案去解析 JSON、写入数据库或触发后续工具。
+
+可以先记住这个区别：
+
+- 非流式：等模型全部生成完，再得到一个完整响应。
+- 流式：模型每生成一小块，应用就接收并处理一小块。
+
+---
+
+## 运行方式
 
 ```bash
 cp .env.example .env
-# add your OPENAI_API_KEY to .env
+# 在 .env 里填入你的 OPENAI_API_KEY
 
 npm install
 npm start
@@ -31,65 +42,112 @@ npm start
 
 ---
 
-## Expected output
+## 预期输出
+
+当前示例先执行非流式调用，再执行流式调用。提示词要求模型用英文回答，所以正文通常是英文；具体内容、数据块数量和字符数每次可能不同。
 
 ```text
-Non-streaming call:
-Waiting for the whole response...
+=== 方式一：非流式调用 ===
+等待服务器生成完整回复...
 
-Streaming responses let your app receive text as the model generates it...
+AI 的回复：
 
----
+[等待完整回答生成后，这一整段文字一次性出现]
 
-Streaming call:
-Printing chunks as they arrive...
 
-Streaming responses let your app receive text as the model generates it...
+=== 方式二：流式调用 ===
+逐字打印，边生成边显示...
+
+[模型生成的文字陆续出现在同一行]
+
+--- 流式输出统计 ---
+共收到 42 个数据块
+完整回复长度：356 个字符
 ```
 
+终端最终看到的两段回答可能很相似，真正的差别在出现过程：非流式回答一次性打印，流式回答会随着网络事件陆续打印。
+
 ---
 
-## The code, explained
+## 代码说明
 
-The streaming call returns an async iterable:
+非流式调用没有设置 `stream: true`，因此 `await` 得到的是完整响应：
 
 ```ts
+const response = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  max_tokens: 300,
+  messages,
+});
+
+console.log(response.choices[0].message.content);
+```
+
+流式调用加入了 `stream: true`，返回值变成一个异步可迭代对象：
+
+```ts
+const stream = await client.chat.completions.create({
+  model: "gpt-4o-mini",
+  max_tokens: 300,
+  messages,
+  stream: true,
+});
+```
+
+异步可迭代对象可以理解为“数据还没有全部到齐的异步数组”。`for await...of` 会等待下一块数据到达，并在每次到达时执行一次循环体：
+
+```ts
+let fullResponse = "";
+
 for await (const event of stream) {
   const token = event.choices[0]?.delta?.content;
 
   if (token) {
     process.stdout.write(token);
+    fullResponse += token;
   }
 }
 ```
 
-Each event may contain a small piece of text, no text, or metadata. Your code has to assemble the final message from many chunks.
+这里有三个容易混淆的术语：
+
+- `event`：服务端发来的一次流式事件。
+- `delta`：这次事件相对上一刻新增的内容。
+- `chunk`：一次收到的数据块，可能包含文本，也可能只有元数据。
+
+示例把文本片段变量命名为 `token`，方便阅读，但一个数据块不一定刚好对应一个模型 token，也不一定只包含一个字符。因此，`chunkCount` 统计的是收到并处理的文本数据块数量，不是准确的 token 数量。
+
+`process.stdout.write` 不会自动换行，适合模拟聊天界面里的连续输出；`console.log` 会在每次打印后换行，更适合普通日志。
+
+同时维护 `fullResponse` 也很重要。界面可以边接收边展示，但流结束后，应用通常仍然需要完整回答来保存对话、执行校验或进入下一步。
 
 ---
 
-## The key insight
+## 关键理解
 
-Partial tokens are not complete messages. Streaming is a state-handling problem as much as a display feature.
-
----
-
-## What can go wrong
-
-- UIs can treat partial output as final output.
-- Errors can happen halfway through a stream.
-- Moderation, validation, or JSON parsing cannot rely on unfinished text.
-- State can get out of sync if the final message is not reconstructed.
+流式输出改善的是“多快开始看到内容”，不是模型生成完整答案所需的总时间。部分文本也不等于最终结果。
 
 ---
 
-## Where this shows up in agents
+## 可能出错的地方
 
-Agents use streaming for chat UIs, long-running reasoning displays, progress updates, and final responses where waiting for the full answer would feel slow.
+- UI 把部分输出误认为最终输出。
+- 网络或服务错误可能发生在流进行到一半时。
+- 未完成的 JSON、代码或 Markdown 不能可靠地解析和校验。
+- 没有把文本片段重新拼接起来，导致最终消息无法保存。
+- 达到 `max_tokens` 时，回答可能以 `finish_reason: "length"` 结束并被截断。
+- 流中断后，应用没有明确决定保留还是丢弃已经生成的部分内容。
 
 ---
 
-## Try it yourself
+## 在 agent 中的常见使用场景
 
-- Add a counter for how many chunks arrived.
-- Store the streamed chunks in a string and print the final message at the end.
-- Try streaming a longer answer and compare perceived speed.
+agent 常用流式输出实现聊天界面的逐步显示、长任务的可见进度、工具执行状态，以及较长最终回答的实时展示。后端仍然需要维护完整状态，并在流结束后再保存或校验最终结果。
+
+---
+
+## 你可以自己试试
+
+- 把提示词中的 `two short paragraphs` 改成 `four short paragraphs`，对比两种方式的等待感受。
+- 在循环里临时打印每个 `event`，观察有文本的事件和只有元数据的事件有什么区别。
+- 使用 `Date.now()` 分别记录“收到第一段文本”和“整个流结束”的时间，比较首段等待时间与总耗时。
