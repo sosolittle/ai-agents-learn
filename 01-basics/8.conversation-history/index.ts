@@ -25,18 +25,19 @@ const messages: Message[] = [
   {
     role: "system",
     content:
-      "You are a concise AI engineering tutor. Keep every answer to two sentences.",
+      "你是一位简洁的 AI 工程导师。每次回答不超过两句话。",
   },
 ];
 // system 消息放在历史最前面，用来设定助手长期遵守的行为风格。
 // 后面每轮会继续往这个数组里 push user 和 assistant 消息。
 
 const userTurns = [
-  "What is an AI agent?",
-  "How is that different from a normal chatbot?",
-  "What should I store if I want the conversation to continue later?",
+  "什么是 AI 智能体？",
+  "它和普通聊天机器人有什么区别？",
+  "如果我想以后继续这段对话，应该保存哪些内容？",
+  "你能给我举一个具体的例子吗？",
 ];
-// userTurns 模拟用户连续问三句话。真实聊天应用里，
+// userTurns 模拟用户连续问四句话。真实聊天应用里，
 // 这些内容会来自输入框，而不是写死在数组里。
 
 async function main() {
@@ -45,9 +46,9 @@ async function main() {
     // 先把当前用户问题加入历史，再调用模型。
     // 如果不 push，模型就看不到这一轮用户到底问了什么。
 
-    console.log("\nUser:");
+    console.log("\n用户：");
     console.log(userTurn);
-    console.log("\nMessages sent to the API:");
+    console.log("\n发送给 API 的消息：");
     console.log(messages.map((message) => message.role).join(" -> "));
 
     const response = await client.chat.completions.create({
@@ -58,14 +59,15 @@ async function main() {
 
     const assistantReply = response.choices[0].message.content ?? "";
 
-    messages.push({ role: "assistant", content: assistantReply });
-    // 再把模型回答也加入历史。
-    // 下一轮用户追问“that”或“上面那个”时，模型才有上下文可参考。
+    // 实验：暂时不把模型回答加入历史，观察后续回答会失去哪些上下文。
+    // messages.push({ role: "assistant", content: assistantReply });
 
-    console.log("\nAssistant:");
+    console.log("\n助手：");
     console.log(assistantReply);
-    console.log("\nMessages after appending assistant response:");
+    // console.log("\n保存助手回答时的消息：");
+    console.log("\n未保存助手回答时的消息：");
     console.log(messages.map((message) => message.role).join(" -> "));
+    console.log("当前消息数量：", messages.length);
     console.log("-".repeat(60));
   }
 }

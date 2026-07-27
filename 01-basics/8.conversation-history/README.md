@@ -8,8 +8,8 @@
 
 - 在应用代码中维护对话历史
 - 调用 API 前，把当前用户消息追加到 `messages`
-- 收到回答后，把 assistant 消息也追加到 `messages`
-- 按顺序运行一段写死的三轮对话
+- 暂时不把 assistant 消息追加到 `messages`，观察缺失回答历史的影响
+- 按顺序运行一段写死的四轮对话
 - 观察每一轮发送给 API 的消息角色如何增加
 
 ---
@@ -43,37 +43,39 @@ npm start
 
 ## 预期输出
 
-示例使用英文问题，因此模型通常也会用英文回答。回答文字每次可能不同，重点是观察消息角色的排列。
+示例使用中文问题，因此模型通常也会用中文回答。回答文字每次可能不同，重点是观察消息角色的排列。
 
 ```text
-User:
-What is an AI agent?
+用户：
+什么是 AI 智能体？
 
-Messages sent to the API:
+发送给 API 的消息：
 system -> user
 
-Assistant:
-[模型生成的两句英文解释]
+助手：
+[模型生成的不超过两句中文解释]
 
-Messages after appending assistant response:
-system -> user -> assistant
+未保存助手回答时的消息：
+system -> user
+当前消息数量： 2
 ------------------------------------------------------------
 
-User:
-How is that different from a normal chatbot?
+用户：
+它和普通聊天机器人有什么区别？
 
-Messages sent to the API:
-system -> user -> assistant -> user
+发送给 API 的消息：
+system -> user -> user
 
-Assistant:
-[模型结合上一轮上下文生成的两句英文解释]
+助手：
+[模型结合上一轮上下文生成的不超过两句中文解释]
 
-Messages after appending assistant response:
-system -> user -> assistant -> user -> assistant
+未保存助手回答时的消息：
+system -> user -> user
+当前消息数量： 3
 ------------------------------------------------------------
 ```
 
-第二轮问题里的 `that` 指向上一轮谈到的 AI agent。模型之所以能理解这个指代，不是因为它自动记住了上一次调用，而是因为应用把上一轮的 user 和 assistant 消息都再次发送了。
+当前实验仍然保存了上一轮的 user 消息，所以模型可以看到之前问过“AI 智能体”。但是它看不到自己上一轮具体回答了什么，因此无法可靠处理依赖回答内容的后续追问。
 
 ---
 
@@ -86,7 +88,7 @@ const messages: Message[] = [
   {
     role: "system",
     content:
-      "You are a concise AI engineering tutor. Keep every answer to two sentences.",
+      "你是一位简洁的 AI 工程导师。每次回答不超过两句话。",
   },
 ];
 ```
@@ -102,14 +104,15 @@ const response = await client.chat.completions.create({
   messages,
 });
 
-messages.push({ role: "assistant", content: assistantReply });
+// 实验：暂时不保存 assistant 回答。
+// messages.push({ role: "assistant", content: assistantReply });
 ```
 
 顺序很重要：
 
 1. 先加入当前的 user 消息，模型才能看到这一轮问题。
 2. 把整个 `messages` 数组发给 API，模型才能参考前文。
-3. 收到回答后，再加入 assistant 消息，下一轮才能知道模型刚才回答了什么。
+3. 正常情况下，收到回答后还要加入 assistant 消息，下一轮才能知道模型刚才回答了什么；当前实验暂时关闭了这一步。
 
 如果某条消息不在数组里，模型在这次请求中就看不到它。如果希望程序关闭后还能继续对话，还需要把相关消息持久化保存，而不能只放在内存变量里。
 
@@ -140,6 +143,6 @@ agent 会用对话历史保存聊天上下文、任务状态、之前的工具�
 
 ## 你可以自己试试
 
-- 添加第四轮问题：`Can you give me one concrete example of that difference?`，观察模型如何继续引用前文。
-- 暂时不把 `assistantReply` 追加到 `messages`，看看后续回答会失去哪些信息。
-- 每轮打印 `messages.length`，观察三轮对话中数组长度如何从 `1` 逐步增长。
+- 观察第四轮问题“你能给我举一个具体的例子吗？”如何继续引用前文。
+- 恢复保存 `assistantReply` 的代码，对比前后两次运行结果。
+- 观察每轮打印的 `messages.length`，确认当前四轮对话结束后数组长度依次为 `2`、`3`、`4`、`5`。
