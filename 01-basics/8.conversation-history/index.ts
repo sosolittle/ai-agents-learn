@@ -13,8 +13,10 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 type Message = OpenAI.ChatCompletionMessageParam;
 // 用 SDK 提供的消息类型可以避免 role/content 写错。
@@ -49,8 +51,8 @@ async function main() {
     console.log(messages.map((message) => message.role).join(" -> "));
 
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 250,
+      model: model,
+      max_tokens: 500,
       messages,
     });
 
