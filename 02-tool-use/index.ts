@@ -18,8 +18,12 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
 // 这一章只用 OpenAI 客户端，因为重点是 function calling / tool use 模式。
 
 // ---------------------------------------------------------------------------
@@ -80,13 +84,13 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_order_status",
-      description: "Look up the current status of a customer order by order ID",
+      description: "根据订单号查询客户订单的当前状态",
       parameters: {
         type: "object",
         properties: {
           order_id: {
             type: "string",
-            description: "The order ID, format: ORD-XXX — e.g. ORD-001",
+            description: "订单号，格式为 ORD-XXX，例如 ORD-001",
           },
         },
         required: ["order_id"],
@@ -97,13 +101,13 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "check_inventory",
-      description: "Check the current stock level for a product by name",
+      description: "根据商品名称查询当前库存数量",
       parameters: {
         type: "object",
         properties: {
           product_name: {
             type: "string",
-            description: "Exact product name as stored in the system — e.g. 'Wireless Headphones'",
+            description: "系统中保存的准确商品名称，例如“Wireless Headphones”",
           },
         },
         required: ["product_name"],
@@ -114,13 +118,13 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "get_customer_profile",
-      description: "Retrieve a customer's profile: name, email, and support tier",
+      description: "查询客户资料，包括姓名、邮箱和支持等级",
       parameters: {
         type: "object",
         properties: {
           customer_id: {
             type: "string",
-            description: "The customer ID, format: CUST-XX — e.g. CUST-42",
+            description: "客户编号，格式为 CUST-XX，例如 CUST-42",
           },
         },
         required: ["customer_id"],
@@ -192,16 +196,16 @@ async function runWithTools(userMessage: string): Promise<string> {
     {
       role: "system",
       content:
-        "You are a helpful order support assistant. Always use the available tools to look up real data before responding. Never guess order statuses, stock levels, or customer details.",
+        "你是一名乐于助人的订单客服助手。回答前必须使用可用工具查询真实数据，绝不能猜测订单状态、库存数量或客户资料。",
     },
     { role: "user", content: userMessage },
   ];
 
-  console.log(`\nUser: ${userMessage}\n`);
+  console.log(`\n用户：${userMessage}\n`);
 
   while (true) {
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: model,
       messages,
       tools,
       // "auto" = model decides whether to call a tool or reply directly.
@@ -219,7 +223,7 @@ async function runWithTools(userMessage: string): Promise<string> {
 
     if (choice.finish_reason === "tool_calls") {
       const toolCalls = choice.message.tool_calls ?? [];
-      console.log(`Model requested ${toolCalls.length} tool call(s):`);
+      console.log(`模型请求调用 ${toolCalls.length} 个工具：`);
 
       for (const call of toolCalls) {
         // 一个 assistant message 里可能有多个 tool call。
@@ -255,23 +259,23 @@ async function main() {
   // 2. 多工具并行请求
   // 3. 多个数据源合成回答
   // 1. Single tool call — model calls get_order_status once and replies
-  const reply1 = await runWithTools("What's the status of order ORD-002?");
-  console.log(`Assistant: ${reply1}\n`);
+  const reply1 = await runWithTools("订单 ORD-002 当前是什么状态？");
+  console.log(`助手：${reply1}\n`);
   console.log("─".repeat(60));
 
   // 2. Parallel tool calls — model calls get_order_status + check_inventory
   //    in the same round because both lookups are independent
   const reply2 = await runWithTools(
-    "I'm customer CUST-42. I want to reorder the Wireless Headphones from ORD-001. Are they in stock?"
+    "我是客户 CUST-42，想再次购买订单 ORD-001 中的 Wireless Headphones。现在有库存吗？"
   );
-  console.log(`Assistant: ${reply2}\n`);
+  console.log(`助手：${reply2}\n`);
   console.log("─".repeat(60));
 
   // 3. Two tools, combined response — model pulls profile + order together
   const reply3 = await runWithTools(
-    "Customer CUST-17 is asking about order ORD-003. Can you pull up their profile and the order details?"
+    "客户 CUST-17 正在询问订单 ORD-003。请查询该客户的资料和订单详情。"
   );
-  console.log(`Assistant: ${reply3}\n`);
+  console.log(`助手：${reply3}\n`);
 }
 
 main().catch(console.error);
