@@ -3,12 +3,16 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "ts-node index.ts"
+    "start": "ts-node index.ts",
+    "dev": "ts-node index.ts",
+    "dev:charles": "USE_CHARLES=1 NODE_EXTRA_CA_CERTS=../../charles-ssl-proxying-certificate.pem ts-node index.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
     "dotenv": "^16.4.5",
     "openai": "^4.100.0",
-    "@anthropic-ai/sdk": "^0.39.0"
+    "undici": "^6.24.0"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",

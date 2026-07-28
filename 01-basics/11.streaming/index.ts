@@ -52,13 +52,23 @@ import "dotenv/config";
 //   dotenv.config({ override: true });
 
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 // OpenAI 官方 SDK
 //
 // 这节课只演示 OpenAI 的 streaming。
 // 不同供应商也支持流式输出，但事件结构、字段名称和结束信号可能不同。
 // 学会这个模式后，再看其他 SDK 会更容易。
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const providerOptions = process.env.OPENAI_BASE_URL?.includes("api.deepseek.com")
+  ? { thinking: { type: "disabled" as const } }
+  : {};
+// DeepSeek V4 默认开启思考模式，思考内容会放在 reasoning_content 中。
+// 本课只讲解正文的流式输出，因此在使用 DeepSeek 时关闭思考模式，
+// 让非流式的 message.content 和流式的 delta.content 都能直接展示正文。
+// 使用其他服务商时 providerOptions 为空，不会额外发送 DeepSeek 专有参数。
+
 // 创建 OpenAI 客户端
 // 这里用简写形式：apiKey: process.env.OPENAI_API_KEY
 // 等价于：apiKey: process.env.OPENAI_API_KEY（属性名和变量名相同时可以省略冒号后面的部分）
@@ -78,14 +88,14 @@ const messages = [
   {
     role: "user" as const,
     content:
-      "Explain streaming responses in two short paragraphs for a Node developer learning AI APIs.",
-    // 用英文提问，因为 GPT 对英文的理解更好
+      "请面向正在学习人工智能 API 的 Node.js 开发者，用两个简短的段落解释什么是流式响应。",
+    // 使用中文提示词，让示例的输入与终端输出保持一致
     // 这个问题本身也是在问"什么是流式输出"，一举两得
     //
     // 这个 prompt 包含 3 个关键信息：
-    //   1. 主题：streaming responses
-    //   2. 长度：two short paragraphs
-    //   3. 受众：Node developer learning AI APIs
+    //   1. 主题：流式响应
+    //   2. 长度：两个简短的段落
+    //   3. 受众：正在学习人工智能 API 的 Node.js 开发者
     //
     // 受众越明确，模型越容易选对解释方式。
     // 给 Node 开发者解释，就可以自然提到 async iterable、stream、事件循环等概念。
@@ -132,7 +142,7 @@ async function nonStreamingDemo() {
   //   - 聊天产品会显得"卡住了"
 
   const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: model,
     // 仍然使用便宜、快速的模型，适合学习 streaming 行为。
     // 这里的重点不是模型能力，而是响应方式的差异。
 
@@ -145,6 +155,7 @@ async function nonStreamingDemo() {
     //   后端也要持续处理事件。
 
     messages,
+    ...providerOptions,
     // 注意：这里没有 stream: true，所以是默认的非流式模式
     //
     // 默认模式下，SDK 会等服务端完成生成，
@@ -163,7 +174,7 @@ async function nonStreamingDemo() {
   //   usage: { ... }
   // }
 
-  console.log("AI 的回复：\n");
+  console.log("模型的回复：\n");
   console.log(response.choices[0].message.content);
   // ↑ 一次性打印全部内容
   // 用户体验：等很久 → 突然出现一大段文字
@@ -219,9 +230,10 @@ async function streamingDemo() {
   // 真正的模型文本会在下面 for await...of 循环里一点点输出。
 
   const stream = await client.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: model,
     max_tokens: 300,
     messages,
+    ...providerOptions,
 
     stream: true,
     // ↑ 关键区别：加了 stream: true！
