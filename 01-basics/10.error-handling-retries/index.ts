@@ -12,8 +12,11 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 type ApiLikeError = {
   status?: number;
@@ -35,11 +38,11 @@ function isRetryable(error: ApiLikeError) {
 }
 
 function errorType(error: ApiLikeError) {
-  if (error.status === 429) return "rate_limit";
-  if (error.status !== undefined && error.status >= 500) return "server_error";
-  if (error.status === 400) return "bad_request";
-  if (error.status === 401) return "auth_error";
-  return "unknown_error";
+  if (error.status === 429) return "请求限流";
+  if (error.status !== undefined && error.status >= 500) return "服务器错误";
+  if (error.status === 400) return "错误请求";
+  if (error.status === 401) return "认证错误";
+  return "未知错误";
 }
 
 function backoffWithJitter(attempt: number) {
@@ -68,11 +71,11 @@ async function callWithRetries(prompt: string) {
         throw { status: 500, message: "Simulated transient server error" };
       }
 
-      console.log(`attempt=${attempt} sending request`);
+      console.log(`尝试次数=${attempt}，正在发送请求`);
 
       const response = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        max_tokens: 200,
+        model: model,
+        max_tokens: 500,
         messages: [{ role: "user", content: prompt }],
       });
 
@@ -84,7 +87,7 @@ async function callWithRetries(prompt: string) {
       // catch 里不要只 console.error。要把错误归类、记录，并决定下一步。
 
       console.log(
-        `attempt=${attempt} error_type=${errorType(apiError)} status=${apiError.status ?? "none"} retryable=${retryable} wait_ms=${retryable && attempt < maxAttempts ? waitMs : 0}`
+        `尝试次数=${attempt} 错误类型=${errorType(apiError)} 状态码=${apiError.status ?? "无"} 可重试=${retryable ? "是" : "否"} 等待毫秒数=${retryable && attempt < maxAttempts ? waitMs : 0}`
       );
 
       if (!retryable || attempt === maxAttempts) {
@@ -103,10 +106,10 @@ async function callWithRetries(prompt: string) {
 async function main() {
   // 这个例子前两次故意失败，所以运行时一定能看到 retry 日志。
   const result = await callWithRetries(
-    "Explain exponential backoff in two sentences for a backend engineer."
+    "请用两句话向后端工程师解释指数退避。"
   );
 
-  console.log("\nFinal result:");
+  console.log("\n最终结果：");
   console.log(result);
 }
 
