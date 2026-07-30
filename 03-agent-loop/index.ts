@@ -119,7 +119,7 @@ function listFiles(): string {
 function readFile(path: string): string {
   // 工具 2：读取某个文件。只有读过文件，模型才能基于真实内容审查。
   const content = FILES[path];
-  if (!content) return `File not found: ${path}`;
+  if (!content) return `未找到文件：${path}`;
   return content;
 }
 
@@ -131,7 +131,7 @@ let finalReport: string | null = null;
 function writeReport(content: string): string {
   // 工具 3：终止工具。模型调用它表示“我已经完成任务，要输出最终报告”。
   finalReport = content;
-  return "Report saved.";
+  return "报告已保存。";
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "list_files",
-      description: "List all source files available for review",
+      description: "列出所有可供审查的源代码文件",
       parameters: { type: "object", properties: {}, required: [] },
     },
   },
@@ -151,13 +151,13 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "read_file",
-      description: "Read the full contents of a source file",
+      description: "读取指定源代码文件的完整内容",
       parameters: {
         type: "object",
         properties: {
           path: {
             type: "string",
-            description: "File path exactly as returned by list_files — e.g. src/auth.ts",
+            description: "文件路径，必须与 list_files 返回的路径完全一致，例如 src/auth.ts",
           },
         },
         required: ["path"],
@@ -169,15 +169,14 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
     function: {
       name: "write_report",
       description:
-        "Write the final security audit report. Call this once you have reviewed " +
-        "every file and compiled all findings. Include issues organized by severity. " +
-        "Calling this ends the audit.",
+        "编写最终安全审计报告。审查完所有文件并汇总全部发现后调用此工具。" +
+        "报告应按严重程度组织问题。调用此工具将结束审计。",
       parameters: {
         type: "object",
         properties: {
           content: {
             type: "string",
-            description: "The complete security audit report in markdown format",
+            description: "使用 Markdown 格式编写的完整中文安全审计报告",
           },
         },
         required: ["content"],
@@ -208,14 +207,14 @@ function executeTool(name: string, args: Record<string, string>): string {
     case "list_files":
       return listFiles();
     case "read_file":
-      if (!args.path) return "Missing required argument: path";
+      if (!args.path) return "缺少必填参数：path";
       return readFile(args.path);
     case "write_report":
-      if (!args.content) return "Missing required argument: content";
+      if (!args.content) return "缺少必填参数：content";
       return writeReport(args.content);
     default:
       // The model can hallucinate a tool name — always handle the unknown case.
-      return `Unknown tool: "${name}"`;
+      return `未知工具："${name}"`;
   }
 }
 
@@ -251,17 +250,17 @@ async function runAgent(goal: string): Promise<string> {
     {
       role: "system",
       content:
-        "You are a security code auditor. " +
-        "Start by listing all files, then read each one carefully. " +
-        "Only call write_report after you have reviewed every file. " +
-        "Organize findings by severity: Critical, High, Medium.",
+        "你是一名代码安全审计员。" +
+        "首先列出所有文件，然后逐一仔细阅读。" +
+        "只有审查完每个文件后，才能调用 write_report。" +
+        "请使用中文撰写报告，并按严重程度组织发现：严重、高危、中危。",
     },
     { role: "user", content: goal },
   ];
 
   let iteration = 0;
 
-  console.log(`Goal: ${goal}\n`);
+  console.log(`目标：${goal}\n`);
 
   while (true) {
     iteration++;
@@ -274,7 +273,7 @@ async function runAgent(goal: string): Promise<string> {
       );
     }
 
-    console.log(`[iteration ${iteration}]`);
+    console.log(`[第 ${iteration} 次迭代]`);
 
     const response = await client.chat.completions.create({
       model: model,
@@ -307,7 +306,7 @@ async function runAgent(goal: string): Promise<string> {
         if (call.function.name === "write_report" && finalReport !== null) {
           // write_report 已经把 finalReport 设置好，说明任务显式完成。
           // 这比“模型不再调用工具”更可靠。
-          console.log(`  ← report written (${finalReport.length} chars)\n`);
+          console.log(`  ← 报告已写入（${finalReport.length} 个字符）\n`);
           // Push the result so message history stays valid, then exit cleanly.
           messages.push({ role: "tool", tool_call_id: call.id, content: result });
           return finalReport;
@@ -331,12 +330,12 @@ async function runAgent(goal: string): Promise<string> {
 
 async function main() {
   const report = await runAgent(
-    "Audit this codebase for security vulnerabilities. " +
-      "Review every file before writing your report."
+    "审查此代码库中存在的安全漏洞。" +
+      "请在撰写报告前审查每一个文件。"
   );
 
   console.log("─".repeat(60));
-  console.log("\nFinal report:\n");
+  console.log("\n最终报告：\n");
   console.log(report);
 }
 
