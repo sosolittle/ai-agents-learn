@@ -18,8 +18,11 @@
 
 import "dotenv/config";
 import OpenAI from "openai";
+import client from "./src/openai-charles-client";
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 // The most important constant in any agent.
 // Without this, a confused model runs until you hit your rate limit.
@@ -274,7 +277,7 @@ async function runAgent(goal: string): Promise<string> {
     console.log(`[iteration ${iteration}]`);
 
     const response = await client.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: model,
       messages,
       tools,
       tool_choice: "auto",

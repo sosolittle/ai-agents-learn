@@ -177,7 +177,7 @@ async function runWithTools(userMessage: string) {
 
             for (const call of toolCalls) {
                 const args = parseToolArgs(call.function.arguments)
-                console.log(`->${call.function.name}(${JSON.stringify(args)})`)
+                console.log(`-> ${call.function.name}(${JSON.stringify(args)})`)
 
                 const result = executeTool(call.function.name, args)
                 console.log(`<- ${result}`)
@@ -193,7 +193,7 @@ async function runWithTools(userMessage: string) {
 }
 
 async function main() {
-    const reply1 = await runWithTools("订单 ORD-002 当前是什么状态？");
+    const reply1 = await runWithTools("订单 O-9999 当前是什么状态？");
     console.log(`助手：${reply1}`)
     console.log("-".repeat(60))
 
