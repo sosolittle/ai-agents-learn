@@ -1,6 +1,6 @@
 import { findWorkflow } from "./checkpointStore.js";
 import { DEMO_APPROVED_ACTION, defaultPaths } from "./config.js";
-import { countEffectsByType, loadEffects } from "./effectStore.js";
+import { countEffectsForWorkflowByType, loadEffectsForWorkflow } from "./effectStore.js";
 import { WORKFLOW_STEPS } from "./types.js";
 import { prettyJson, printSection } from "./utils.js";
 import { createWorkflow, resumeWorkflow, runWorkflow, SimulatedCrashError } from "./workflowRunner.js";
@@ -29,7 +29,28 @@ function main(): void {
       "human already approved it in Module 11. There is no model call in this module."
   );
 
-  const workflow = createWorkflow(paths, DEMO_APPROVED_ACTION);
+  const { workflow, reused } = createWorkflow(paths, DEMO_APPROVED_ACTION);
+
+  // Workflow-start idempotency: this is a SEPARATE boundary from the
+  // step-level idempotency key demonstrated below. It stops the SAME approval
+  // from ever starting a SECOND workflow — so running "npm start" twice never
+  // creates WF-002 or a second refund for APR-001.
+  if (reused) {
+    printSection("Workflow already exists");
+    console.log(`${DEMO_APPROVED_ACTION.approvalId} already belongs to ${workflow.id}.`);
+    console.log("\nNo new workflow was created.");
+    console.log("No new refund was created.");
+    console.log(`\nCurrent status: ${workflow.status}`);
+    console.log(
+      `${workflow.id} refund effects:       ${countEffectsForWorkflowByType(paths, workflow.id, "refund")}`
+    );
+    console.log(
+      `${workflow.id} confirmation effects: ${countEffectsForWorkflowByType(paths, workflow.id, "confirmation")}`
+    );
+    console.log("\nRun:\n  npm run reset\nto replay the crash demonstration from a clean state.");
+    return;
+  }
+
   printSection("Workflow created");
   console.log(workflow.id);
 
@@ -52,7 +73,7 @@ function main(): void {
   printStepList(crashed.completedSteps);
 
   printSection("Side-effect ledger");
-  for (const effect of loadEffects(paths)) {
+  for (const effect of loadEffectsForWorkflow(paths, workflow.id)) {
     const resultId = effect.type === "refund" ? effect.result.refundId : effect.result.confirmationId;
     console.log(`${effect.key} → ${resultId}`);
   }
@@ -71,8 +92,12 @@ function main(): void {
 
   printSection("Workflow completed");
   console.log(`${finalWorkflow.id}  [${finalWorkflow.status}]`);
-  console.log(`\nRefund effects:       ${countEffectsByType(paths, "refund")}`);
-  console.log(`Confirmation effects: ${countEffectsByType(paths, "confirmation")}`);
+  console.log(
+    `\n${finalWorkflow.id} refund effects:       ${countEffectsForWorkflowByType(paths, finalWorkflow.id, "refund")}`
+  );
+  console.log(
+    `${finalWorkflow.id} confirmation effects: ${countEffectsForWorkflowByType(paths, finalWorkflow.id, "confirmation")}`
+  );
 
   printSection("Lesson");
   console.log("The checkpoint remembers where the workflow was.");

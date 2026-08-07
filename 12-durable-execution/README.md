@@ -165,7 +165,9 @@ The mock refund provider's own record, independent of the workflow checkpoint:
 }
 ```
 
-The idempotency key (`WF-001:execute_refund`) is checked **inside the provider function itself** (`mockRefundProvider` in `steps.ts`) — not by wrapping the call in `if (!completedSteps.includes(...))` in the runner. That distinction matters: the runner's own bookkeeping is exactly what the crash corrupted. The idempotency check has to live somewhere the crash can't invalidate it — at the boundary where the side effect actually happens.
+The idempotency key (`WF-001:execute_refund`) is checked **inside the provider function itself** (`mockRefundProvider` in `steps.ts`) — not by wrapping the call in `if (!completedSteps.includes(...))` in the runner. That distinction matters: the runner's own bookkeeping is exactly what the crash corrupted.
+
+The idempotency check belongs at the side-effect boundary, ideally in the downstream provider that owns the operation. This demo models that boundary with a separate local effect ledger. The simulated crash occurs only *after* the mock provider ledger has already persisted the effect — the local JSON files themselves are not atomic or production-durable, and a crash could in principle interrupt a local file write too. What makes the demonstration valid is the ordering of the two writes, not a claim that either one is unbreakable.
 
 ## What happens after restart
 
@@ -180,13 +182,13 @@ Final counts: **1 refund effect, 1 confirmation effect** — regardless of the c
 
 ## Code walkthrough
 
-- **`types.ts`** — Zod contracts: the closed `WorkflowStep` enum (and the `WORKFLOW_STEPS` array derived from it, so step order has one source of truth), workflow status, the structural `ApprovedAction`/`WorkflowInput` shapes, the persisted `WorkflowRecord`, the discriminated `EffectRecord` union, and workflow events.
-- **`steps.ts`** — the actual step implementations. `validateApproval` is pure and side-effect free; it applies the *business-rule* schema (regex IDs, positive amount, `EUR` only, non-empty reason) — stricter than the structural schema in `types.ts`, which only proves "these fields exist." `mockRefundProvider` and `mockConfirmationProvider` are the idempotent side-effect boundaries: each checks the ledger for its idempotency key before doing anything.
-- **`workflowRunner.ts`** — orchestration and resume semantics. `createWorkflow`, `runWorkflow`, `resumeWorkflow`. Resume position is always derived as "the first step not in `completedSteps`" — there is no separately tracked `currentStep` pointer that could drift out of sync with the array that actually matters. This file also defines `SimulatedCrashError` and the `crashAfterSideEffectStep` injection point.
-- **`checkpointStore.ts`** — JSON persistence for workflow records: "where did the workflow get to?"
-- **`effectStore.ts`** — JSON persistence for the idempotency ledger, plus the `idempotencyKey(workflowId, step)` helper: "if this step retries, can it avoid repeating the side effect?"
+- **`types.ts`** — Zod contracts: the closed `WorkflowStep` enum (and the `WORKFLOW_STEPS` array derived from it, so step order has one source of truth), workflow status, the structural `ApprovedAction`/`WorkflowInput` shapes, the persisted `WorkflowRecord`, the discriminated `EffectRecord` union, and workflow events. `WorkflowRecordSchema` carries a `superRefine` that enforces two invariants beyond individual field shapes: `completedSteps` must be an exact ordered prefix of `WORKFLOW_STEPS` (no gaps, no repeats, no reordering), and a completed step's result must actually be present in `context` (a completed `execute_refund` requires `context.refundId`, and so on) — while still allowing the legitimate crash-window state where a refund effect exists in the ledger but the workflow's own context doesn't know about it yet. `EffectRecordSchema` pins `step` to a literal per branch of the union, so a refund effect can only ever be tagged `"execute_refund"`.
+- **`steps.ts`** — the actual step implementations. `validateApproval` is pure and side-effect free; it applies the *business-rule* schema (regex IDs, positive amount, `EUR` only, non-empty reason) — stricter than the structural schema in `types.ts`, which only proves "these fields exist." `mockRefundProvider` and `mockConfirmationProvider` are the idempotent side-effect boundaries: each checks the ledger for its idempotency key before doing anything, and each fails closed with a clear error if an existing record at that key belongs to the wrong effect type (a corrupted-ledger case, not a normal one) instead of silently creating a second effect.
+- **`workflowRunner.ts`** — orchestration and resume semantics. `createWorkflow`, `runWorkflow`, `resumeWorkflow`. `createWorkflow` is itself idempotent by approval ID: it looks up an existing workflow for the approval before allocating a new one, returning `{ workflow, reused }`. Resume position within a workflow is always derived as "the first step not in `completedSteps`" — there is no separately tracked `currentStep` pointer that could drift out of sync with the array that actually matters. This file also defines `SimulatedCrashError` and the `crashAfterSideEffectStep` injection point.
+- **`checkpointStore.ts`** — JSON persistence for workflow records: "where did the workflow get to?" `findWorkflowByApprovalId` is the lookup that makes workflow-start idempotency possible.
+- **`effectStore.ts`** — JSON persistence for the idempotency ledger, plus the `idempotencyKey(workflowId, step)` helper: "if this step retries, can it avoid repeating the side effect?" `appendEffect` refuses to append a second record under a key that already exists, as a last-line guard (not a fix for concurrent writers — see Production notes).
 - **`eventLog.ts`** — an append-only, validated event log for lifecycle visibility (`WORKFLOW_CREATED`, `STEP_STARTED`, `SIDE_EFFECT_REUSED`, ...).
-- **`index.ts`** — `npm start`. The full readable crash/resume demonstration in one file. No model call.
+- **`index.ts`** — `npm start`. The full readable crash/resume demonstration in one file. No model call. Running it twice does not create a second workflow or a second refund — it prints a clear message and stops.
 - **`cli.ts`** — manual commands: `crash`, `resume`, `status`, `effects`, `events`, `reset`.
 - **`config.ts` / `utils.ts`** — data paths and small helpers (JSON store I/O, ID generation, console formatting).
 
@@ -275,14 +277,34 @@ Workflow completed
 ──────────────────
 WF-001  [completed]
 
-Refund effects:       1
-Confirmation effects: 1
+WF-001 refund effects:       1
+WF-001 confirmation effects: 1
 
 ────────────
 Lesson
 ────────────
 The checkpoint remembers where the workflow was.
 The idempotency key prevents a replayed step from repeating the side effect.
+```
+
+Running `npm start` again afterward — this is workflow-start idempotency, a different boundary from the step-level one above:
+
+```text
+───────────────────────
+Workflow already exists
+───────────────────────
+APR-001 already belongs to WF-001.
+
+No new workflow was created.
+No new refund was created.
+
+Current status: completed
+WF-001 refund effects:       1
+WF-001 confirmation effects: 1
+
+Run:
+  npm run reset
+to replay the crash demonstration from a clean state.
 ```
 
 `npm run events -- WF-001` after `crash` then `resume`:
@@ -331,6 +353,28 @@ Conversation memory (Module 6) can know: *"the customer requested a refund."* Th
 
 The runner checkpoints a step **only** after that step's work has fully succeeded — never before, and never speculatively. That is deliberate: a checkpoint written before the side effect completes could mark `execute_refund` done when the refund never actually happened. But checkpointing strictly after success still leaves a window: between "the side effect returned" and "the checkpoint write completed," the process can die, and the checkpoint never happens. That window is the entire reason this module exists. Checkpointing correctly does not close it — only idempotency at the side-effect boundary does.
 
+## Two idempotency boundaries
+
+This module actually protects against two different kinds of duplication, and it is worth keeping them separate:
+
+**1. Workflow-start idempotency**
+
+```text
+APR-001 → one workflow
+```
+
+`createWorkflow` looks up an existing workflow by approval ID (`findWorkflowByApprovalId`) before allocating a new one. Submitting the same approved action twice — a retried request, a double click, a re-run of `npm start` — returns the existing workflow instead of creating a second one. This prevents the same approved business action from ever being submitted as two separate workflows, each of which would otherwise be entitled to its own legitimate-looking refund.
+
+**2. Step-execution idempotency**
+
+```text
+WF-001:execute_refund → REF-001
+```
+
+The mock provider ledger, keyed by workflow ID and step. This prevents a *retried step inside the same workflow* from repeating its side effect — the crash/resume scenario this whole module is built around.
+
+These solve different duplicate paths. Workflow-start idempotency stops a duplicate *submission* from becoming a duplicate *workflow*. Step-execution idempotency stops a duplicate *retry* from becoming a duplicate *side effect*. A system that only had one of the two would still double-refund somewhere: skip the first and `npm start` twice creates `WF-002`; skip the second and any retry inside a single workflow can re-charge.
+
 ## Idempotency
 
 The idempotency key is derived from the workflow, not chosen arbitrarily:
@@ -361,6 +405,8 @@ running → completed
 - a resume-from-persisted-state example, reloaded fresh from disk
 - an explicit demonstration of the failure window between a side effect and its checkpoint
 - a local idempotency example, enforced at the side-effect boundary rather than in the caller
+- two distinct duplicate-prevention boundaries: one approval maps to at most one workflow, and one workflow-step retry maps to at most one side effect
+- persisted-state invariants enforced by schema: `completedSteps` can only ever be a valid ordered prefix, and a completed step's context field must actually be present
 - a bridge from human approval (Module 11) to workflow orchestration
 
 ## What this example is not
@@ -386,6 +432,7 @@ A production version of this pattern would additionally need:
 - leases or worker ownership, so two workers can't both think they own the same workflow
 - heartbeats and workflow timeouts, to detect a worker that died without ever throwing
 - concurrency control: locking or optimistic concurrency on workflow records
+- the local JSON check-then-write sequence (`findEffectByKey` → `appendEffect`, `findWorkflowByApprovalId` → create) is not concurrency-safe: two processes could race between the lookup and the write and both decide to create a new record. Production idempotency needs an atomic uniqueness constraint, a transaction, a provider-native idempotency key, or an equivalent coordination mechanism — not just a check followed by a write
 - step attempt counters, to distinguish "retried once" from "stuck in a retry loop"
 - an immutable, durable event history (this module's event log is a JSON file, not a durable event store)
 - observability: metrics and alerting on stuck or failed workflows

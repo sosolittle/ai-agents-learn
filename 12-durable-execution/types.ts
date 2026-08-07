@@ -85,7 +85,11 @@ export type WorkflowContext = z.infer<typeof WorkflowContextSchema>;
 // The durable checkpoint. `completedSteps` — not a `currentStep` pointer — is
 // the source of truth for where to resume: it cannot drift out of sync with
 // itself the way a separately-tracked pointer could.
-export const WorkflowRecordSchema = z
+//
+// The base object type is exported separately from the refined schema below,
+// so other schemas (and error messages) can talk about "a workflow record"
+// without re-running the semantic checks every time.
+const WorkflowRecordShape = z
   .object({
     id: z.string(),
     status: WorkflowStatusSchema,
@@ -97,7 +101,60 @@ export const WorkflowRecordSchema = z
     lastError: z.string().optional(),
   })
   .strict();
-export type WorkflowRecord = z.infer<typeof WorkflowRecordSchema>;
+
+/** True only if `completed` is exactly a prefix of WORKFLOW_STEPS — no gaps, no repeats, no reordering. */
+function isValidCompletedPrefix(completed: WorkflowStep[]): boolean {
+  return completed.every((step, index) => WORKFLOW_STEPS[index] === step);
+}
+
+// This refinement is what makes a corrupted or hand-edited checkpoint fail to
+// load instead of silently confusing the resume logic. `completedSteps`
+// deciding "what's next" is only safe to trust if it can only ever be a valid
+// prefix of the workflow definition.
+export const WorkflowRecordSchema = WorkflowRecordShape.superRefine((record, ctx) => {
+  if (!isValidCompletedPrefix(record.completedSteps)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["completedSteps"],
+      message: "completedSteps must be an ordered prefix of the workflow definition",
+    });
+  }
+
+  // The context must agree with which steps actually completed: a completed
+  // step must have left its result behind. This is deliberately one
+  // directional — an effect existing in the idempotency ledger does NOT
+  // require the workflow context to know about it yet. That gap (the
+  // provider knows before the checkpoint does) is the crash-window lesson
+  // this module exists to demonstrate, so a record like
+  // `{ completedSteps: ["validate_approval"], context: {} }` with a refund
+  // effect already persisted elsewhere must stay valid.
+  if (record.completedSteps.includes("execute_refund") && !record.context.refundId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["context", "refundId"],
+      message: "execute_refund is completed but context.refundId is missing",
+    });
+  }
+  if (record.completedSteps.includes("send_confirmation") && !record.context.confirmationId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["context", "confirmationId"],
+      message: "send_confirmation is completed but context.confirmationId is missing",
+    });
+  }
+
+  if (record.status === "completed") {
+    const allStepsDone = WORKFLOW_STEPS.every((step) => record.completedSteps.includes(step));
+    if (!allStepsDone) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["status"],
+        message: 'status is "completed" but not every workflow step is in completedSteps',
+      });
+    }
+  }
+});
+export type WorkflowRecord = z.infer<typeof WorkflowRecordShape>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Idempotent side effects (the mock downstream providers' ledger)
@@ -129,15 +186,19 @@ export const ConfirmationEffectResultSchema = z
 export type ConfirmationEffectResult = z.infer<typeof ConfirmationEffectResultSchema>;
 
 // A discriminated union keyed on `type`, so a refund record can never end up
-// holding a confirmation-shaped result or vice versa. `key` is the idempotency
-// key (e.g. "WF-001:execute_refund") — the mock provider's own lookup key, not
-// just a workflow-side convenience field.
+// holding a confirmation-shaped result or vice versa. `step` is additionally
+// pinned to a literal per branch — a refund effect can only ever be tagged
+// "execute_refund" and a confirmation effect only "send_confirmation" — so an
+// impossible record like `{ type: "refund", step: "send_confirmation" }`
+// fails schema validation instead of quietly persisting. `key` is the
+// idempotency key (e.g. "WF-001:execute_refund") — the mock provider's own
+// lookup key, not just a workflow-side convenience field.
 export const EffectRecordSchema = z.discriminatedUnion("type", [
   z
     .object({
       key: z.string(),
       workflowId: z.string(),
-      step: WorkflowStepSchema,
+      step: z.literal("execute_refund"),
       type: z.literal("refund"),
       result: RefundEffectResultSchema,
       createdAt: z.string(),
@@ -147,7 +208,7 @@ export const EffectRecordSchema = z.discriminatedUnion("type", [
     .object({
       key: z.string(),
       workflowId: z.string(),
-      step: WorkflowStepSchema,
+      step: z.literal("send_confirmation"),
       type: z.literal("confirmation"),
       result: ConfirmationEffectResultSchema,
       createdAt: z.string(),

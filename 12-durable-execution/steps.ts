@@ -73,7 +73,16 @@ export function mockRefundProvider(
   const key = idempotencyKey(workflowId, step);
 
   const existing = findEffectByKey(paths, key);
-  if (existing && existing.type === "refund") {
+  if (existing) {
+    // Fail closed: a key that already belongs to the wrong effect type is
+    // corrupted persisted state, not a cue to create a second effect under
+    // the same key. Silently proceeding here is exactly the kind of "quietly
+    // paper over inconsistent state" this module argues against.
+    if (existing.type !== "refund") {
+      throw new Error(
+        `Idempotency key collision: "${key}" already belongs to a "${existing.type}" effect.`
+      );
+    }
     return { result: existing.result, reused: true };
   }
 
@@ -109,7 +118,12 @@ export function mockConfirmationProvider(
   const key = idempotencyKey(workflowId, step);
 
   const existing = findEffectByKey(paths, key);
-  if (existing && existing.type === "confirmation") {
+  if (existing) {
+    if (existing.type !== "confirmation") {
+      throw new Error(
+        `Idempotency key collision: "${key}" already belongs to a "${existing.type}" effect.`
+      );
+    }
     return { result: existing.result, reused: true };
   }
 

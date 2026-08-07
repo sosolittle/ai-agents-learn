@@ -1,5 +1,6 @@
 import {
   findWorkflow,
+  findWorkflowByApprovalId,
   nextWorkflowId,
   upsertWorkflow,
 } from "./checkpointStore.js";
@@ -69,14 +70,45 @@ function toWorkflowInput(approvedAction: ApprovedAction): WorkflowInput {
   };
 }
 
+export interface CreateWorkflowResult {
+  workflow: WorkflowRecord;
+  /** True when an existing workflow for this approval was returned instead of a new one. */
+  reused: boolean;
+}
+
 /**
- * Create a new workflow from an approved action and persist its initial
- * checkpoint. The action is structurally validated here (right shape, right
- * primitive types) but NOT business-validated — that happens inside the
+ * Create a workflow from an approved action, or return the existing one.
+ *
+ * The approval ID is treated as the business identity of the authorized
+ * action — it is a different boundary from the step-level idempotency key
+ * (`WF-001:execute_refund`):
+ *
+ *   - approval identity  → prevents the SAME approval from starting a SECOND
+ *     workflow (and therefore a second, independent refund).
+ *   - workflow-step identity → prevents a RETRY of an EXISTING workflow's
+ *     step from repeating that step's side effect.
+ *
+ * Without this guard, resubmitting APR-001 (e.g. a retried request, a second
+ * click) would create WF-001 and WF-002, and each would have its own
+ * `WF-00N:execute_refund` key — two legitimate-looking refunds for one
+ * approval. This is checked before allocating a new workflow ID, so a repeat
+ * submission never even consumes an ID.
+ *
+ * The action is structurally validated here (right shape, right primitive
+ * types) but NOT business-validated — that happens inside the
  * validate_approval step itself, every time it runs.
  */
-export function createWorkflow(paths: DataPaths, rawApprovedAction: unknown): WorkflowRecord {
+export function createWorkflow(
+  paths: DataPaths,
+  rawApprovedAction: unknown
+): CreateWorkflowResult {
   const approvedAction = ApprovedActionSchema.parse(rawApprovedAction);
+
+  const existing = findWorkflowByApprovalId(paths, approvedAction.approvalId);
+  if (existing) {
+    return { workflow: existing, reused: true };
+  }
+
   const id = nextWorkflowId(paths);
   const now = nowIso();
 
@@ -92,7 +124,7 @@ export function createWorkflow(paths: DataPaths, rawApprovedAction: unknown): Wo
 
   upsertWorkflow(paths, record);
   appendEvent(paths, { event: "WORKFLOW_CREATED", workflowId: id });
-  return record;
+  return { workflow: record, reused: false };
 }
 
 /** The first step not yet in completedSteps. Undefined once every step is done. */

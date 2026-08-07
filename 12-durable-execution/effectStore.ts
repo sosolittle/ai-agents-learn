@@ -27,14 +27,40 @@ export function findEffectByKey(paths: DataPaths, key: string): EffectRecord | u
   return loadEffects(paths).find((effect) => effect.key === key);
 }
 
+/**
+ * Append a new effect, enforcing that one idempotency key maps to exactly one
+ * effect record. `findEffectByKey` + `appendEffect` is a check-then-write
+ * sequence, not an atomic operation, so this is a last-line guard against a
+ * bug (or a hand-edited ledger) appending a second record for a key that
+ * should have short-circuited to a reuse. It is not a fix for concurrent
+ * writers racing each other — see the README's Production notes.
+ */
 export function appendEffect(paths: DataPaths, effect: EffectRecord): void {
   const effects = loadEffects(paths);
+  if (effects.some((existing) => existing.key === effect.key)) {
+    throw new Error(
+      `Refusing to append a second effect for idempotency key "${effect.key}". ` +
+        "One key must map to exactly one effect record."
+    );
+  }
   effects.push(effect);
   writeJsonArray(paths.effects, effects);
 }
 
 export function countEffectsByType(paths: DataPaths, type: EffectType): number {
   return loadEffects(paths).filter((effect) => effect.type === type).length;
+}
+
+export function loadEffectsForWorkflow(paths: DataPaths, workflowId: string): EffectRecord[] {
+  return loadEffects(paths).filter((effect) => effect.workflowId === workflowId);
+}
+
+export function countEffectsForWorkflowByType(
+  paths: DataPaths,
+  workflowId: string,
+  type: EffectType
+): number {
+  return loadEffectsForWorkflow(paths, workflowId).filter((effect) => effect.type === type).length;
 }
 
 /** Next deterministic result ID (e.g. "REF-001", "MSG-001") for an effect type. */

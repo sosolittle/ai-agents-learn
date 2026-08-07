@@ -1,6 +1,6 @@
 import { findWorkflow } from "./checkpointStore.js";
 import { DEMO_APPROVED_ACTION, defaultPaths } from "./config.js";
-import { loadEffects } from "./effectStore.js";
+import { countEffectsForWorkflowByType, loadEffects } from "./effectStore.js";
 import { loadEventsForWorkflow } from "./eventLog.js";
 import { WORKFLOW_STEPS } from "./types.js";
 import { prettyJson, printSection, writeJsonArray } from "./utils.js";
@@ -29,7 +29,23 @@ function main(): void {
       // Creates a fresh workflow from the fixed demo input and runs it into
       // the dangerous window: the refund provider succeeds, then the process
       // "crashes" before execute_refund is checkpointed.
-      const workflow = createWorkflow(paths, DEMO_APPROVED_ACTION);
+      const { workflow, reused } = createWorkflow(paths, DEMO_APPROVED_ACTION);
+
+      if (reused) {
+        printSection("Workflow already exists");
+        console.log(`${DEMO_APPROVED_ACTION.approvalId} already belongs to ${workflow.id}.`);
+        console.log("\nNo new workflow was created. No new refund was created.");
+        console.log(`\nCurrent status: ${workflow.status}`);
+        console.log(
+          `${workflow.id} refund effects:       ${countEffectsForWorkflowByType(paths, workflow.id, "refund")}`
+        );
+        console.log(
+          `${workflow.id} confirmation effects: ${countEffectsForWorkflowByType(paths, workflow.id, "confirmation")}`
+        );
+        console.log("\nRun:\n  npm run reset\nto replay the crash demonstration from a clean state.");
+        break;
+      }
+
       printSection(`Workflow ${workflow.id} created`);
       console.log(prettyJson(DEMO_APPROVED_ACTION));
 

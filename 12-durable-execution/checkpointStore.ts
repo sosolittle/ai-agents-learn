@@ -19,6 +19,19 @@ export function findWorkflow(paths: DataPaths, id: string): WorkflowRecord | und
   return loadWorkflows(paths).find((record) => record.id === id);
 }
 
+/**
+ * Find the workflow already created for an approval, if any. This is the
+ * anchor for workflow-start idempotency: the approval ID is the business
+ * identity of the authorized action, so one approval should map to at most
+ * one workflow, however many times its submission is retried.
+ */
+export function findWorkflowByApprovalId(
+  paths: DataPaths,
+  approvalId: string
+): WorkflowRecord | undefined {
+  return loadWorkflows(paths).find((record) => record.input.approvalId === approvalId);
+}
+
 /** Insert a new record or replace an existing one by ID. This is the checkpoint write. */
 export function upsertWorkflow(paths: DataPaths, record: WorkflowRecord): void {
   const records = loadWorkflows(paths);
