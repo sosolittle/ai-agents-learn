@@ -129,7 +129,13 @@ This repo is the backbone of my **"AI Agents From Scratch"** LinkedIn series. Ea
 |---|---|
 | [human-in-the-loop](./11-human-in-the-loop/) | An agent proposes a risky action, deterministic policy pauses it, a human approves, edits, or rejects it, and approved execution is revalidated, audited, and protected against duplicate runs. |
 
-*More patterns coming — durable execution, checkpointing, and workflow orchestration.*
+### 12 — Durable Execution
+
+| Pattern | What it demonstrates |
+|---|---|
+| [durable-execution](./12-durable-execution/) | A checkpointed workflow survives a simulated crash, resumes from persisted state, and uses idempotency keys to avoid replaying side effects such as refunds. |
+
+*More patterns coming — workflow orchestration, workers, and concurrency control.*
 
 ---
 

@@ -1,0 +1,25 @@
+{
+  "name": "12-durable-execution",
+  "version": "1.0.0",
+  "description": "Durable agent workflow execution from scratch: checkpoint state, resume after failure, and protect side effects with local idempotency keys",
+  "type": "module",
+  "scripts": {
+    "start": "tsx index.ts",
+    "crash": "tsx cli.ts crash",
+    "resume": "tsx cli.ts resume",
+    "status": "tsx cli.ts status",
+    "events": "tsx cli.ts events",
+    "effects": "tsx cli.ts effects",
+    "reset": "tsx cli.ts reset",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx tests/runTests.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
+}

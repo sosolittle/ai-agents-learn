@@ -1,0 +1,33 @@
+name: Durable Execution Module
+
+on:
+  pull_request:
+    paths:
+      - "12-durable-execution/**"
+      - ".github/workflows/durable-execution.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "12-durable-execution/**"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: 12-durable-execution
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: 12-durable-execution/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
