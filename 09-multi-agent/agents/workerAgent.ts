@@ -1,5 +1,12 @@
 // ============================================================
-//  Worker Agent：根据计划和知识库产出 MVP 草稿
+//  Worker Agent：根据计划和知识库产出 MVP 草稿（工匠）
+//
+//  🏠 生活化比喻：
+//  工匠动工时手里有两样东西：规划师的计划书（plan）和
+//  资料柜（knowledge）。他的纪律是「在计划范围内干活」——
+//  不重新解释用户想要什么（那是规划师的事），不自由发挥
+//  架构（资料柜里有推荐）。产出的草稿同样要走验收口，
+//  保证审稿人拿到的是结构完整的货。
 //
 //  学习目标：
 //  1. 理解 Worker 不应该重新解释用户目标，而应该服从 Planner 的计划
@@ -11,6 +18,8 @@ import "dotenv/config";
 
 import { MAX_TOKENS, MODEL, TEMPERATURE, getClient } from "../config.js";
 import { knowledge } from "../knowledge.js";
+// 一行 import 里同时拿类型（type PlannerOutput）和值（schema）——
+// Zod 的常见姿势：schema 运行时校验用，类型编译时标注用。
 import { WorkerDraftSchema, type PlannerOutput, type WorkerDraft } from "../types.js";
 import { prettyJson, safeJsonParse } from "../utils.js";
 
@@ -42,6 +51,14 @@ export async function runWorkerAgent(
 ): Promise<WorkerDraft> {
   // Worker 接收原始 goal 和 plan。
   // goal 用于避免计划丢失原始意图；plan 用于约束工作范围。
+  //
+  // userContent 三段拼装（数组 + join 的文本拼装套路，见 knowledge.ts）：
+  //   ① 原始目标——给工匠「不忘初心」的锚点；
+  //   ② 计划书 JSON——带缩进的可读格式（prettyJson），
+  //      并明说「你必须在它范围内工作」；
+  //   ③ 资料柜 JSON——本地的工程知识，工匠的 grounding 来源。
+  // 三段缺一不可：只给 plan 会丢用户原话，只给 goal 会自由发挥，
+  // 没有 knowledge 就只剩模型的通用记忆。
   const userContent = [
     `Original user goal: ${goal}`,
     "",
@@ -65,5 +82,7 @@ export async function runWorkerAgent(
 
   const raw = response.choices[0].message.content ?? "";
   // 这里不直接 return JSON.parse(raw)，而是交给 safeJsonParse 做 schema 校验。
+  // 草稿少字段（比如漏了 tradeoffs）会带着「Worker Agent returned
+  // invalid shape」的完整诊断抛出——主流程接住并终止，不带病进审稿。
   return safeJsonParse<WorkerDraft>(raw, "Worker Agent", WorkerDraftSchema);
 }

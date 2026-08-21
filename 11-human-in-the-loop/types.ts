@@ -2,6 +2,14 @@
 //  第十一章：数据契约（types.ts）
 //  把"自然语言请求"变成"可验证的数据结构"
 //
+//  🏠 生活化比喻：审批处所有单据的「表格式样册」。
+//  每种单据都是一张印好格子的表格：哪些格必填、各填什么类型、
+//  哪些格根本没印（模型想填"我不需要审批"？表上没这个格子，
+//  印表器直接把单子作废）。Zod Schema 就是表格的"电子模具"：
+//  纸面数据过不了模具，连进文件柜的资格都没有。
+//  全章五类单据的式样全部钉在本文件——改一张表，全楼的
+//  校验规则跟着变，这就是"契约集中"的含义。
+//
 //  学习目标：
 //  1. 理解什么是"数据契约"：为什么 agent 系统的每个对象都要有 Schema
 //  2. 用 discriminated union（判别联合）把"工具名"和"参数结构"绑定起来
@@ -216,6 +224,19 @@ export type ActionProposal = z.infer<typeof ActionProposalSchema>;
 // "判别字段 + 联合类型"是处理"多种形态数据"的标准手法，
 // 和第一章里 Anthropic 响应的 content 数组（text 块 / tool_use 块）
 // 是同一个思想：先看类型标记，再按对应形状处理。
+//
+// 📤 输入输出走查（同一张表格的两种命运）：
+//   输入 A：{ toolName: "refundOrder",
+//            arguments: { orderId: "ORD-001", amount: 79,
+//                         currency: "EUR", reason: "damaged" },
+//            reason: "Customer requests a refund" }
+//     → 判别器读到 refundOrder → 路由到退款分支 → 逐格核对全过 ✓
+//     → parse 返回收窄后的类型：amount 此后是 number
+//   输入 B：输入 A 再偷偷多塞一个 requiresApproval: false
+//     → 外层 .strict() 发现"表格上没印这个格子" ✗
+//     → ZodError: Unrecognized key 'requiresApproval'
+//   A 成为下游可信赖的数据；B 连门都进不来——
+//   "prompt 是引导，Schema 才是边界"的具体形状。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 第三部分：策略（Policy）

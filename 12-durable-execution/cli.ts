@@ -2,6 +2,13 @@
 //  第十二章：CLI（cli.ts）
 //  手动探索崩溃/恢复生命周期的六个命令
 //
+//  🏠 生活化比喻：导演的「分镜台本」。index.ts 是把两幕一口气
+//  演完的联排；本文件把两幕拆进两个真实的剧场——
+//  crash 命令在 A 剧场演到断电为止，resume 命令在 B 剧场
+//  从断点接着演（更接近生产：崩溃的进程和恢复的进程
+//  本来就不是同一个）。中间还能随时看白板（status）、
+//  翻发票簿（effects）、放录像（events）——三个视角查同一案子。
+//
 //  学习目标：
 //  1. 用 crash / resume 两命令把"两幕剧"拆到两个进程里演
 //  2. 用 status / effects / events 三命令从三个视角查案
@@ -256,6 +263,17 @@ try {
 //   npm run resume -- WF-001 # 第二幕：另一个进程恢复
 //   npm run status -- WF-001 # 全部 ✓，context 两本账对齐
 //   npm run events -- WF-001 # 时间线：缺口 + SIDE_EFFECT_REUSED
+//
+// 📤 每一步的关键输出（照着对答案）：
+//   crash   → "💥 Simulated process crash ... before the checkpoint"
+//   status  → Completed: ✓ validate_approval
+//             Remaining: ○ execute_refund  ○ send_confirmation
+//   effects → WF-001:execute_refund → REF-001   ← 白板没勾，账本有票！
+//   resume  → "Resuming from: execute_refund" → Status: completed
+//   status  → 三个 ✓ + Context: { refundId: "REF-001",
+//                                 confirmationId: "MSG-001" }
+//   events  → SIDE_EFFECT_EXECUTED 之后直接 WORKFLOW_RESUMED（缺口），
+//             随后 SIDE_EFFECT_REUSED —— 幂等命中的现场录像
 //
 // 三视角查案（status/effects/events）对应三个 store
 // （workflows/effects/events.json）——

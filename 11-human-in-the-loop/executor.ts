@@ -2,6 +2,13 @@
 //  第十一章：执行器（executor.ts）
 //  副作用发生前的最后一道安全门
 //
+//  🏠 生活化比喻：后屋那位「出纳」。他不听前台转述、不看便利贴，
+//  只认三样亲手核实的东西：自己现查的《权限表》结论、
+//  亲眼确认"已签字"（status === "approved"）的单据、
+//  自己翻过的付款台账（有没有为这张单付过款）。
+//  哪怕有人绕过前台直接把单子塞给他（测试里真这么干过），
+//  他照样三查三对——查完才动手，动手必留痕。
+//
 //  学习目标：
 //  1. 不信任上游已检查过的结论，在执行边界再次校验策略和状态
 //     —— 纵深防御不是"检查很多次"的口号，而是每一层独立可守
@@ -98,6 +105,19 @@ export function executeAction(
   //   "权限结论的来源必须比权限结论本身更难伪造。"
 
   // 边界 1：被禁止的工具永不执行。
+  //
+  // 📤 输入输出走查（一张伪造单据连闯三道门，测试 12/16/18 实录）：
+  //   攻击 1（测试 12）：伪造 { toolName: "deleteProductionUsers",
+  //             status: "pending" } 直接调 executeAction
+  //     → 边界 1：查表得 deny → 抛 "Refusing to execute..."（当场按住）
+  //   攻击 2（测试 16）：换造 { toolName: "refundOrder", status: "pending" }
+  //     → 边界 1 过（退款不在黑名单）
+  //     → 边界 2：require_approval 但 status ≠ approved → 按住
+  //   攻击 3（测试 18）：{ ..., status: "approved" }（手工 upsert 伪造
+  //             合法授权状态——测的是边界不能矫枉过正）
+  //     → 三道门全过 → 工具真跑 → EXE/REF 落盘
+  //   三次闯关对应三条边界"各自独立有效"——
+  //   安全不靠调用方守规矩，靠每一层都自己把门。
   if (policy.decision === "deny") {
     throw new Error(
       `Refusing to execute "${toolName}": denied by policy. ${policy.reason}`

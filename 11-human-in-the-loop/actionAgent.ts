@@ -2,6 +2,14 @@
 //  第十一章：动作提案 Agent（actionAgent.ts）
 //  模型只描述"做什么"，不决定"能不能做"
 //
+//  🏠 生活化比喻（延续 index.ts 的「报销审批处」故事）：
+//  本文件就是那位「前台接待员」。客户（用户请求）到窗口说一句话，
+//  他负责听懂、翻《工具手册》、填出一张标准申请单（ActionProposal）。
+//  注意他填的单子上连"这笔要不要审批"那一栏都没有——
+//  表格上根本没印这个格子，他想越权都没地方写。
+//  填完把单子递进窗口（返回值），后面的事就与他无关了：
+//  查表是 policy 的事、签字是人、付款是 executor。
+//
 //  学习目标：
 //  1. 把模型职责限制为"选择工具 + 生成参数"
 //  2. 理解 prompt 约束用于"引导输出"，Zod 校验才是"程序边界"
@@ -156,6 +164,22 @@ export async function proposeAction(request: string): Promise<ActionProposal> {
   // 比"对 null 调 .match"抛出的 TypeError 更有指导意义。
   // response_format 只能提高返回 JSON 的概率；它不能替代业务校验。
   // safeJsonParse 会先解析 JSON，再用 ActionProposalSchema 检查工具和参数。
+  //
+  // 📤 输入输出走查（index.ts 的演示请求进来之后）：
+  //   输入  request = "Refund €79.00 for order ORD-001 ... damaged."
+  //   模型输出 raw ≈ '{"toolName":"refundOrder","arguments":
+  //                     {"orderId":"ORD-001","amount":79,"currency":"EUR",
+  //                      "reason":"Customer reports damage"},
+  //                    "reason":"Customer requests a refund"}'
+  //   safeJsonParse 过两道关卡：
+  //     关卡 1  JSON.parse —— 语法是合法 JSON 吗？
+  //     关卡 2  ActionProposalSchema —— 判别器读到 toolName 是
+  //             refundOrder，直接路由到退款分支，逐格核对：
+  //             orderId 像 ORD-001 吗？amount 是正数吗？多印格子了吗？
+  //   全过 → 返回类型收窄后的 ActionProposal（amount 是 number，
+  //          不是字符串 "79"——类型由 Schema 保证，不靠模型自觉）
+  //   假如模型夹带 "requiresApproval": false → 关卡 2 的外层
+  //   .strict() 当场抛 ZodError——单子连窗口都递不进去。
   return safeJsonParse<ActionProposal>(
     raw,
     "Action Proposal Agent",

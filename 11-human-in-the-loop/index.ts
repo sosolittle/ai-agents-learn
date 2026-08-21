@@ -1,6 +1,21 @@
 // ============================================================
 //  第十一章入口：human-in-the-loop（人在回路中的审批）
 //
+//  🏠 生活化比喻——一家公司的「报销审批处」（贯穿全章的主比喻）：
+//    模型      = 前台接待员：聪明、懂业务，客户说一句"包裹坏了
+//                要退款"，他就能填出一张规范的申请单——
+//                但他没有保险柜钥匙；
+//    policy    = 墙上钉着的《审批权限表》：查订单随便查、
+//                动钱必须签字、删生产数据直接轰走——
+//                白纸黑字，没有商量余地；
+//    审批单    = 递进窗口的纸质单据：先锁进文件柜（写进 JSON），
+//                主管（人类）明天来签、下周来签都行；
+//    executor  = 后屋出纳：只认"已签字"的单据，见单付款、付完记账。
+//
+//  本文件演的是前三步：客户递话 → 接待员填单 → 查表 → 单据进柜。
+//  然后整个大厅安静下来，灯可以关、门可以锁——单据不会跑，
+//  等一个人来签字（cli.ts 的 approve 命令）。
+//
 //  学习目标：
 //  1. 区分"模型有能力提出动作"和"系统允许执行动作"
 //  2. 看懂 proposal → policy → approval → execution 的完整控制链
@@ -10,10 +25,22 @@
 //  核心结论：
 //  Agent 只能提出建议；真正的执行权限必须由确定性代码和人类共同控制。
 //
-//  本文件的运行效果（npm start）：
-//  打印用户请求 → 调模型拿到提案 → 策略判定 → 创建 pending 审批单
-//  → 明确告知"什么都没有执行" → 提示下一步 CLI 命令。
-//  整个流程在"等待人类"处干净地停下，这就是本章的"暂停"。
+//  📤 输入输出走查（npm start 的完整一轮，€79 退款场景）：
+//    输入  "Refund €79.00 for order ORD-001 ... arrived damaged."
+//    ① proposeAction 调模型，接待员填单（全章唯一一次模型调用）：
+//       { toolName: "refundOrder",
+//         arguments: { orderId: "ORD-001", amount: 79,
+//                      currency: "EUR", reason: "..." } }
+//    ② handleProposal 查《权限表》→ refundOrder = require_approval
+//    ③ data/approvals.json 落盘一张 pending 审批单（id: APR-001）
+//    ④ 审计日志依次记下 ACTION_PROPOSED → POLICY_EVALUATED
+//       → APPROVAL_REQUESTED 三个事件
+//    ⑤ 终端打印 "Nothing has executed yet."——到此钱一分没动
+//    ⑥ 进程退出。APR-001 躺在文件柜里，等多久都行
+//
+//  屏幕上你会依次看到五个小节标题：User request → Agent proposal
+//  → Policy decision → Approval requested → Next steps——
+//  输出顺序刻意对齐处理顺序，看输出就是在看流程图。
 // ============================================================
 
 import "dotenv/config";
@@ -105,12 +132,15 @@ async function main(): Promise<void> {
   // 三种 outcome 都带 policy 字段，所以这行在分支之前就能打印。
 
   if (outcome.kind === "denied") {
-    // deny 与 reject 不同：deny 是系统策略直接禁止，甚至不会生成审批单；
+    // ⚠️ 易混概念：deny ≠ reject。
+    // deny 是系统策略直接禁止，甚至不会生成审批单；
     // reject 是已经进入人工队列后，由审核人拒绝某一条具体申请。
     //
     // 这两个词在日常语言里几乎是同义词，在本章里是两个精确概念：
     //   deny    → policy.ts 的判定，发生在进队列之前
+    //             （审批处门口就被《权限表》轰走）
     //   rejected→ 审批单的状态，发生在进队列之后
+    //             （单据进了柜子，主管看了之后划掉）
     printSection("Action denied");
     console.log(
       `The tool "${outcome.toolName}" is forbidden by policy and was never recorded or executed.`
@@ -143,6 +173,12 @@ async function main(): Promise<void> {
   // 函数马上就要返回、进程马上就要退出。
   // "等人"不是这个进程的职责——是 data/approvals.json 里
   // 那张 pending 单在等，等多久都行。
+  //
+  // 放进比喻里看：前台把单子锁进文件柜、关灯、下班。
+  // 柜子里那张纸"等主管签字"可以等到下个月——
+  // 等待被物化成了磁盘上的一行 JSON，而不是内存里
+  // 一根悬着的 Promise。这是本章与"控制台问答式审批"
+  // 最本质的差别（config.ts 里有一段专门的对照）。
   printSection("Approval requested");
   if (outcome.duplicateOf) {
     // duplicateOf 存在 → 这次没有创建新单，复用了旧单。

@@ -2,6 +2,14 @@
 //  第十二章：数据契约（types.ts）
 //  给"工作流状态"和"副作用账本"立规矩
 //
+//  🏠 生活化比喻：剧场后台的「账簿法定格式」。
+//  进度白板（WorkflowRecord）每一栏怎么填、发票登记簿
+//  （EffectRecord）每一行怎么记，全部钉死在格式规范里——
+//  错一格、跳一步、"退款"行里塞"通知"内容，格式检查
+//  （superRefine / 判别联合）当场打回。剧场最大的灾难
+//  不是断电，而是断电后白板变得不可信——规矩立在前面，
+//  断电后才对得起账。
+//
 //  学习目标：
 //  1. 理解本章与第 11 章的接力关系：
 //     11 章回答"这个动作允不允许执行"（policy/审批），
@@ -310,6 +318,18 @@ export type WorkflowRecord = z.infer<typeof WorkflowRecordShape>;
 //   类型用 Shape 推导避免无关场景（比如只想描述记录形状）
 //   绑定重校验逻辑——和"基础对象类型与 refined schema 分开"的
 //   注释意图一致。
+//
+// 📤 输入输出走查（superRefine 拦三种坏账，测试同款场景）：
+//   坏账 A：completedSteps: ["validate_approval", "send_confirmation"]
+//     （跳步——没退款就发通知？）→ 前缀检查失败，
+//      path 指向 completedSteps ✗
+//   坏账 B：completedSteps 含 execute_refund，context.refundId 缺失
+//     （谎报完成——勾了"退款"却拿不出收据）→
+//      path 指向 context.refundId ✗
+//   坏账 C：status: "completed" 但步骤没齐
+//     （虚报收工——谢幕了还有一幕没演）→ path 指向 status ✗
+//   三种坏数据都在 loadWorkflows 读盘的瞬间被拒——
+//   恢复逻辑永远只见到验过格式的干净白板。
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 第四部分：幂等副作用（mock 下游提供方的账本）

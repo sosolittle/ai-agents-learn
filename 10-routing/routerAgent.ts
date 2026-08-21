@@ -1,5 +1,16 @@
 // ============================================================
-//  Router Agent：把用户请求分类到执行路线
+//  第十章 Router Agent：把用户请求分类到执行路线（分诊护士）
+//
+//  🏠 生活化比喻：
+//  分诊护士不治病——量个体温、问两句话，然后告诉你挂哪个科。
+//  她的「分诊纪律」全写在 SYSTEM_PROMPT 里，三条最要紧：
+//   ① 能便宜就便宜（cheapest safe）：说句话就能答的，
+//      别兴师动众开多 agent 会诊；
+//   ② 「听起来复杂」不是升级理由——不许因为任务听起来
+//      复杂就路由到 multi_agent；
+//   ③ 危险动作拦下：不可逆的（退款/删数据）转人工审批，
+//      纯破坏性的（删生产库）直接拒绝；两头都沾时按拒绝算。
+//  她的输出是一张结构化分诊单（JSON），不是治疗本身。
 //
 //  学习目标：
 //  1. 理解 router 不回答问题，只输出结构化决策
@@ -53,10 +64,21 @@ Return a JSON object with exactly these fields:
   "required_capabilities": string[],
   "next_step": string
 }`;
+// 提示词里两条值得划重点的硬规则：
+//  「both → refuse」：同样沾边人工审批和拒绝时按拒绝算——
+//   没有哪个审批人应该被叫来批准「删光生产用户表」这种事；
+//  「Do not over-route」：不许因为「听起来复杂」就升级到
+//   multi_agent——贵的能力要用在真需要的地方。
 
 export async function runRouterAgent(request: string): Promise<RouterDecision> {
   // 输入是一条用户请求，输出是 RouterDecision。
   // 后续 dispatch 会根据 decision.route 选择对应处理器。
+  //
+  // 注意这是一次「无工具的纯分类调用」——没有 tools 数组、
+  // 没有循环。分类这种事一次调用就该做完；真正贵的执行
+  //（研究、多 agent）发生在路由之后、且只发生在该发生的地方。
+  // 「分类便宜、执行昂贵，先用便宜的一步决定贵的怎么走」
+  // 正是路由模式的经济账。
   const response = await getClient().chat.completions.create({
     model: MODEL,
     temperature: TEMPERATURE,
@@ -69,5 +91,7 @@ export async function runRouterAgent(request: string): Promise<RouterDecision> {
   });
 
   const raw = response.choices[0].message.content ?? "";
+  // 验收口：分诊单必须完全符合模板。route 拼错、confidence
+  // 超出 [0,1]、risk_level 自创等级——都在这里当场报废。
   return safeJsonParse<RouterDecision>(raw, "Router Agent", RouterDecisionSchema);
 }

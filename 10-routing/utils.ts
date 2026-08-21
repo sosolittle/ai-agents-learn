@@ -1,5 +1,11 @@
 // ============================================================
-//  第十章 utils：路由模块共用工具
+//  第十章 utils：路由模块共用工具（验收口，复用第九章的模式）
+//
+//  🏠 生活化比喻：
+//  和第九章的「传递窗口」同一家连锁店：分诊单（router 的 JSON
+//  输出）先验「是不是合法 JSON」，再验「符不符合分诊单模板」
+// （RouterDecisionSchema）。不合格的分诊单当场作废，
+//  绝不会拿着一张写歪的纸去挂号。
 //
 //  学习目标：
 //  1. 复用 JSON parse + Zod 校验逻辑
@@ -20,6 +26,9 @@ import { z } from "zod";
  * Throws a clear, labelled error if the text is not valid JSON or does not
  * match the schema, so a bad routing decision is easy to spot.
  */
+// 泛型 + z.ZodType<T> 的手法与第九章 utils.ts 完全同款
+// （详讲见那里）——两个模块各自留一份副本，是有意的：
+// 本仓库每个模块自包含，不跨模块共享 src。
 export function safeJsonParse<T>(
   raw: string,
   label: string,

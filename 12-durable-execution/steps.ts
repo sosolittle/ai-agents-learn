@@ -2,6 +2,13 @@
 //  第十二章：步骤实现（steps.ts）
 //  一步一个函数——纯校验、幂等退款、幂等通知
 //
+//  🏠 生活化比喻：剧场外合作的「收银台」（幂等提供方的化身）。
+//  收银员每收一笔钱都先翻「发票登记簿」（幂等账本）：
+//  这单开过票吗？开过 → 把上次的发票再递给你（复用）；
+//  没开过 → 收款、开票、当场登记。刷卡失败重刷、网络重试
+//  都不怕——同一张小票永远只收一次钱。门口的保安
+//  （validate_approval）则只看批条真伪：纯检查，不动钱。
+//
 //  学习目标：
 //  1. 分清两类步骤的恢复策略：
 //     纯步骤（validate_approval）随便重跑，
@@ -157,6 +164,14 @@ export function mockRefundProvider(
   // 保证 idempotencyKey 的参数类型精确匹配 WorkflowStep。
   const key = idempotencyKey(workflowId, step);
   // "WF-001:execute_refund"——跨工作流唯一 + 同工作流稳定（见 effectStore）。
+  //
+  // 📤 走查（同一个函数的两条路径，带真实 ID）：
+  //   首跑：账本里查无 "WF-001:execute_refund" → 汇款 49 欧
+  //         → 账本记 { key, result: { refundId: "REF-001", ... } }
+  //         → 返回 { result, reused: false }
+  //   恢复重跑：账本命中同键 → 原样递回 REF-001
+  //         → 返回 { result, reused: true }
+  //         （钱没有第二次离开公司账户——这就是全部魔法）
 
   const existing = findEffectByKey(paths, key);
   // 第一件事永远是查账本，而不是干活。

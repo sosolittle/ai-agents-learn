@@ -2,6 +2,12 @@
 //  第十一章：审批 CLI（cli.ts）
 //  在不同进程中恢复并推进人工审批
 //
+//  🏠 生活化比喻：主管的「办公桌」。npm start 是前台收单的窗口；
+//  这里是主管回来后坐下的那张桌子——翻待办（approvals）、
+//  拿红笔改金额（edit）、签字放款（approve）或退回（reject）、
+//  调监控回放（audit）。桌子本身不做任何决定：笔一落纸，
+//  真正的规则全部在 approvalService 里生效。
+//
 //  学习目标：
 //  1. 用 list / edit / approve / reject 操作持久化审批单
 //  2. 理解 CLI 只是输入适配层，所有业务规则仍在 approvalService
@@ -311,4 +317,18 @@ try {
 //   进程 C（npm run approve): 批准 + 执行一次 + 退出
 //   进程 D（npm run audit） : 只读时间线
 // 四个进程，一份 JSON 状态，无服务器、无常驻进程。
+//
+// 📤 输入输出走查（README 的完整故事线，79 → 49 部分退款）：
+//   npm run reset                       # 干净开局（清三个 JSON）
+//   npm start                           # APR-001 [pending] amount=79
+//   npm run approvals                   # 待办列表里看到这张单
+//   npm run edit -- APR-001 --amount=49 \
+//               --reason="Partial refund approved after review"
+//                                      # Before: 79 / After: 49，仍 pending
+//   npm run approve -- APR-001          # → EXE-001 / REF-001，[executed]
+//   npm run approve -- APR-001          # 再批一次 → blocked，工具没再调
+//   npm run audit                       # 七个事件按因果顺序回放：
+//                                      #   提案→判定→创建→编辑→批准→执行→拦截
+//   （reject 的例子：另一张单 npm run reject -- APR-002
+//     --reason="Customer is not eligible" → 终态，永不执行）
 // ============================================================

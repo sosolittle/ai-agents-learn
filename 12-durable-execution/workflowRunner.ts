@@ -2,6 +2,14 @@
 //  第十二章：工作流运行器（workflowRunner.ts）
 //  编排、checkpoint 与恢复语义
 //
+//  🏠 生活化比喻：游戏的「存档系统」（贯穿全章）。
+//  打完一个小关卡立刻存档（checkpointStep），断电后从最近的
+//  存档重开（resumeWorkflow）；而钱庄关卡门口还有一台「小票机」
+//  （effectStore 的幂等键）——重玩这一关时，凭上次的小票直接领
+//  通关奖励，不用（也不能）再付一遍钱。存档说"我打到哪了"，
+//  小票说"这关付过钱没有"——两样东西合起来，断电才不可怕。
+//  本文件只管存档；小票的逻辑在 steps.ts 和 effectStore.ts。
+//
 //  学习目标：
 //  1. 看懂"创建 → 运行 → 崩溃 → 恢复"四个动词各自的实现
 //  2. 理解恢复点的唯一真相：completedSteps 推导，无 currentStep 指针
@@ -339,6 +347,16 @@ function runStep(
         // （危险的窗口：退款提供方已经创建了 REF-001。
         //  如果进程恰好死在这里，下面的 checkpoint 永远不会执行，
         //  下一次调用仍然会把 execute_refund 视为未完成。）
+        //
+        // 📤 输入输出走查（这一步的两条时间线，带真实 ID）：
+        //   正常：provider 查账本（无 "WF-001:execute_refund"）→ 汇款
+        //         → 账本 +REF-001 → checkpoint 勾掉 execute_refund
+        //   注入：同样汇款 → 账本 +REF-001 → 此刻抛 SimulatedCrashError
+        //         → 白板仍停在 [validate_approval]
+        //         → 恢复重跑这一步：账本命中同键 → REUSED，不再汇款
+        //   两条线的差别只在一行代码的距离——
+        //   "副作用落账"和"checkpoint 落盘"之间的缝隙，
+        //   就是整个第 12 章存在的原因。
         if (options.crashAfterSideEffectStep === step) {
           // 注入点命中 → 精确"断电"：
           //   副作用已落账本（上面 appendEffect 完成）
@@ -426,6 +444,12 @@ function advance(
   // runWorkflow 和 resumeWorkflow 的共同内核。
   // 唯一差别是起点事件的名字——首跑叫 STARTED，
   // 恢复叫 RESUMED（时间线上可区分两种"开始"）。
+  //
+  // TS 语法小讲：startEvent 的类型 "WORKFLOW_STARTED" | "WORKFLOW_RESUMED"
+  // 是「字符串字面量联合」当参数用——调用方只能二选一，
+  // 手滑写成 "WORKFLOW_START"（少了 D）会当场编译报错。
+  // 这比普通的 string 参数多了一层拼写保险，和 11 章
+  // z.literal 钉死判别字段是同一个思想在函数签名上的应用。
   const record = requireWorkflow(paths, workflowId);
   // 注意：record 是刚从磁盘读的。
   // 本函数不接收 WorkflowRecord 参数——

@@ -2,6 +2,16 @@
 //  第十一章：审批服务（approvalService.ts）
 //  人工审批生命周期的编排中心
 //
+//  🏠 生活化比喻：审批处的「调度台」。
+//  一张单据从进窗口到出结果要盖好几个章：查权限表、登记、
+//  主管签字、出纳付款、台账留痕。调度台自己不盖任何一个章——
+//  它只决定"下一步把单子递给谁"：权限表在 policy.ts、
+//  文件柜在 approvalStore.ts、出纳在 executor.ts、
+//  台账在 auditLog.ts。但单据的一生——
+//  propose → gate → pending → edit → approve/reject → execute → audit——
+//  每一步的先后顺序由这里说了算，而顺序本身就是安全设计
+//  （先落盘授权再付款、先记账再改状态，顺序错了崩溃窗口就变大）。
+//
 //  学习目标：
 //  1. 看懂提案如何经过策略后进入三种结果：
 //     自动执行（auto_executed）/ 待审批（pending）/ 拒绝（denied）
@@ -114,6 +124,12 @@ export type ProposalOutcome =
 // - auto_executed 一定带 execution
 // - pending 一定带 record，并可能指向 duplicateOf
 // - denied 没有 approval record，因为禁止动作不会进入人工队列
+//
+// TS 语法小讲：denied 分支里的 toolName: ActionProposal["toolName"]
+// 是「索引访问类型」（indexed access type）——直接"取"联合类型
+// ActionProposal 里 toolName 字段的类型（即 ToolName）。
+// 好处：不 import ToolName 也能引用它，而且上游改枚举时
+// 这里自动跟着变（approvalStore.nextResultId 用过同一招）。
 //
 // 这是"结果类型"（result type）模式在 TS 里的标准形态：
 //   一个 kind 字段判别 + 每种结果只携带自己需要的数据。
@@ -281,6 +297,14 @@ export function handleProposal(
   //   复用 rejected 的单 = 偷偷给被拒绝的请求第二次机会；
   //   复用 executed 的单 = 把新请求挂在旧退款上。
   //   历史就是历史，新请求开新单。
+  //
+  // 📤 走查（重复检测为什么必要）：npm start 手滑跑了两次——
+  //   第一次：创建 APR-001 [pending]，进程退出
+  //   第二次：同样的原话、同样的工具、同样的参数
+  //           → find 命中 APR-001 → 返回 duplicateOf: "APR-001"
+  //           → 审批人列表里永远只有一张单，不可能批出两笔退款
+  //   没有这段逻辑：两张一模一样的单并排躺在柜子里，
+  //   忙碌的主管很可能"都批了"——钱就退了两次。
   const duplicate = loadApprovals(paths).find(
     (existing) =>
       existing.status === "pending" &&
@@ -486,6 +510,16 @@ export function approveApproval(paths: DataPaths, id: string): ApproveResult {
   // 对账记录并复用已有结果。
   // 这处理一个很窄但很重要的崩溃窗口：
   // saveExecution 成功 → 进程崩溃 → approval 尚未更新为 executed。
+  //
+  // 📤 输入输出走查（崩溃窗口的对账，带真实 ID）：
+  //   第一次 approve：APR-001 → approved 落盘 ✓ → 工具跑完
+  //     EXE-001 落盘 ✓ → 就在翻状态成 executed 之前 💥 断电
+  //   重新开机，第二次 approve 同一张单：
+  //     读单 → 状态还是 approved；查执行 → 找到 EXE-001
+  //     → 不再调工具，直接把状态补成 executed
+  //     → 审计多一条 EXISTING_EXECUTION_RECOVERED
+  //   退款自始至终只有 REF-001 这一笔——
+  //   用事实（execution）修复状态（approval），而不是重演事实。
   //
   // 时间轴：
   //   [1] approved 落盘        ← 人工权限已持久化

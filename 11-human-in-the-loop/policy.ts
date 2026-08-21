@@ -2,6 +2,13 @@
 //  第十一章：策略门（policy.ts）
 //  用确定性代码决定执行权限
 //
+//  🏠 生活化比喻：审批处墙上那张《审批权限表》。
+//  机场安检分三条通道：绿色通道（免检直行）、人工复核通道
+//  （开箱人工看一眼）、黑名单（压根不让进候机楼）。
+//  本文件就是钉在墙上的那张表——四个工具各走哪条通道，
+//  一行一条，查表即答案。没有模型参与、没有"酌情通融"：
+//  表不会因为今天心情好就放行一笔退款。
+//
 //  学习目标：
 //  1. 理解 policy 是授权边界，不是另一个 Agent
 //     —— 它是一张普通的查找表，不调模型、不看 prompt
@@ -124,6 +131,13 @@ export function evaluatePolicy(toolName: ToolName): PolicyResult {
   // 查到就直接返回。整个函数没有任何 I/O、随机数、时间、模型调用——
   // 这就是"确定性"的具体形态：
   //   同样的输入，任何时刻、任何进程，永远同样的输出。
+  //
+  // 📤 走查：evaluatePolicy("refundOrder")
+  //   → TOOL_POLICIES["refundOrder"]
+  //   → { decision: "require_approval",
+  //       reason: "Financial actions cannot execute automatically." }
+  //   这个调用跑一万次、在任何进程里跑，结果一个字都不会变——
+  //   所以 tests 1–4 敢于把它锁死成"快照"断言。
   // 这让它可以被无限次重放测试（见 tests/runTests.ts 第 1-4 个用例）。
 }
 

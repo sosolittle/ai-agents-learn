@@ -2,6 +2,13 @@
 //  第十一章：审批存储（approvalStore.ts）
 //  用 JSON 文件保存可恢复的工作流状态与执行事实
 //
+//  🏠 生活化比喻：审批处的「文件柜」——而且是两个不同的柜子：
+//  approvals.json 是活页夹（单据状态可翻页更新：
+//  pending → approved → executed 就是三次换页）；
+//  executions.json 是装订死的台账（发生过的事只许加页，
+//  不许涂改一行）。两个柜子分开锁，谁的钥匙能开哪个柜、
+//  能做什么动作，由 API 的形状规定死（详见下方注释）。
+//
 //  学习目标：
 //  1. 区分 approval record（流程状态，可更新）与
 //     execution record（执行事实，只追加）
