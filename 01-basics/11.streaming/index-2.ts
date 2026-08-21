@@ -11,6 +11,14 @@
 //  2. 练习 for await...of 读取流式事件
 //  3. 理解 delta.content 和完整 message.content 的区别
 //
+//  🏠 比喻一句话带过（完整展开见 index.ts 文件头）：
+//  非流式 = 等整封信写完才寄；流式 = 「写一句传真一句」，
+//  chunk 就是传真的每一页纸，拼接 delta.content = 贴成长卷轴。
+//
+//  和 index.ts 的差别：这里不用 src/openai-charles-client.ts，
+//  而是直接 new OpenAI(...)（不挂 Charles 监听）；
+//  参数用的是 max_completion_tokens（OpenAI 新版的 max_tokens 写法）。
+//
 //  如果想看更完整的教学注释，请读同目录 index.ts。
 // ============================================================
 
@@ -72,6 +80,12 @@ async function streamingDemo() {
     // 流式输出时，终端可以边打印 token；
     // 但如果后面还要保存完整回答，就需要像这样自己拼起来。
 
+    // 📤 输入输出走查（3 个 chunk 的真实节奏，字段与 index.ts 相同）：
+    //   { choices: [{ delta: { content: "流" } }] }    → 打印 “流”
+    //   { choices: [{ delta: { content: "式" } }] }    → 打印 “流式”
+    //   { choices: [{ delta: { content: "输出" } }] }  → 打印 “流式输出”
+    //   ……收尾的 chunk 通常没有 content，choices[0].finish_reason
+    //      会变成 "stop"（本练习没读它，index.ts 里有示范）。
     for await (const event of stream) {
         const token = event.choices[0]?.delta?.content
         // delta 表示“这一次新增加的内容片段”。

@@ -2,6 +2,12 @@
 //  第二课：streaming（流式输出）
 //  对比非流式和流式两种调用方式，理解"逐字显示"的原理
 //
+//  🏠 生活化比喻：
+//  普通响应 = 等对方把整封信写完、装进信封才一次性寄出；
+//  流式响应 = 「写一句传真一句」：对方每写几个字就传真一页过来，
+//  你第 1 秒就能看到开头，不用干等全文。chunk = 传真的每一页纸，
+//  把每个 chunk 的 delta.content 按顺序拼接 = 贴成长卷轴。
+//
 //  学习目标：
 //  1. 理解什么是流式输出（Streaming），为什么要用它
 //  2. 掌握 stream: true 参数的用法
@@ -162,7 +168,7 @@ async function nonStreamingDemo() {
     // 然后把完整的 ChatCompletion 对象交给你。
   });
 
-  // 非流式的响应结构（上一课学过）：
+  // 📤 输入输出走查（非流式：一次性返回的 JSON 形状，上一课学过）：
   // response = {
   //   choices: [{
   //     message: {
@@ -308,6 +314,12 @@ async function streamingDemo() {
     // ↑ 每次循环，event 是一个 ChatCompletionChunk 对象
     // 这个对象是服务器发来的"一小块数据"
     //
+    // 📤 输入输出走查（连续 3 个 chunk 长什么样、怎么拼成卷轴）：
+    //   chunk 1: delta.content = "流"     → 屏幕：“流”        fullResponse = "流"
+    //   chunk 2: delta.content = "式"     → 屏幕：“流式”      fullResponse = "流式"
+    //   chunk 3: delta.content = "输出"   → 屏幕：“流式输出”  fullResponse = "流式输出"
+    //   收尾 chunk: delta 里没有 content，finish_reason 变成 "stop" → 流结束
+    //
     // 流式事件的结构（跟非流式不同！）：
     // event = {
     //   id: "chatcmpl-abc123",
@@ -407,7 +419,7 @@ async function streamingDemo() {
       chunkCount++;
     }
 
-    // 最后一个 event 的 finish_reason 会变成 "stop"
+    // ⚠️ 结束信号判断：最后一个 event 的 finish_reason 会变成 "stop"
     // 表示 AI 已经说完了
     // 你也可以用它来判断流是否结束：
     //   const reason = event.choices[0]?.finish_reason;

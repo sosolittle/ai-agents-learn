@@ -2,6 +2,13 @@
 //  第一课：simple-llm-call
 //  同时演示 OpenAI SDK 和 Anthropic SDK 两种调用方式
 //
+//  🏠 生活化比喻：
+//  调用 LLM 就像给一位「住在云端的顾问」打工作电话：
+//    SDK        → 官方电话总机（帮你接通，不用管内部线路）
+//    messages   → 通话前递过去的便签（顾问没有记忆，全靠便签了解来意）
+//    response   → 对方回传的备忘录（一个大 JSON，答案藏在里面）
+//  这一课要做的，就是把这一通电话完整地打熟练。
+//
 //  学习目标：
 //  1. 理解什么是 SDK（Software Development Kit）
 //  2. 学会用 TypeScript 调用 LLM API
@@ -45,9 +52,9 @@ import dotenv from "dotenv";
 // .env 文件存放 API Key 等敏感配置，不能写在代码里（会被别人看到）
 // dotenv 会把 .env 文件里的变量加载到 process.env 对象中
 //
-// 举个例子：
-//   .env 文件内容：OPENAI_API_KEY=sk-abc123
-//   加载后：process.env.OPENAI_API_KEY === "sk-abc123"
+// 📤 输入输出走查（dotenv 到底做了什么）：
+//   输入（.env 文件内容）：OPENAI_API_KEY=sk-abc123
+//   输出（加载后的 process.env）：process.env.OPENAI_API_KEY === "sk-abc123"
 
 dotenv.config({ override: true });
 // 调用 config() 方法来执行加载
@@ -73,6 +80,10 @@ import OpenAI from "openai";
 //
 // 什么是 SDK？
 //   SDK = Software Development Kit（软件开发工具包）
+//   🏠 它就是模型公司的「官方电话总机」：
+//   你不需要知道内部线路怎么接、话务怎么转，
+//   只要拨对分机号（方法名，比如 client.chat.completions.create）、
+//   报清楚需求（参数），总机就帮你把电话接到模型那一头。
 //   它把复杂的 HTTP 请求封装成了简单的方法调用
 //   你不需要自己拼接 URL、设置 Header、处理响应格式
 //   只需要调用 SDK 提供的方法，比如 client.chat.completions.create()
@@ -133,10 +144,10 @@ const openaiClient = new OpenAI({
   // process.env 是 Node.js 内置的全局对象，存放所有环境变量
   // 这里的值来自 .env 文件（由上面的 dotenv.config() 加载）
   //
-  // 为什么 API Key 不能直接写在代码里？
+  // ⚠️ 为什么 API Key 绝不能直接写在代码里？（高危易错点）
   //   1. 代码可能会提交到 Git 仓库
   //   2. 仓库可能会同步到 GitHub
-  //   3. Key 泄漏后别人可以用你的额度调用 API
+  //   3. API 按 token 计费，Key 泄漏 = 别人拿你的钱包刷额度
   //   4. 泄漏的 Key 需要立刻吊销和替换
   //
   // 所以配置和代码要分离：
@@ -184,6 +195,11 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 // || 运算符：如果左边是 undefined 或空字符串，就用右边的默认值
 // "gpt-4o-mini" 是 OpenAI 最便宜的模型，适合学习和测试
 //
+// 📤 输入输出走查（|| 默认值什么时候生效）：
+//   .env 里写了 OPENAI_MODEL=gpt-4o      → OPENAI_MODEL === "gpt-4o"
+//   .env 里没写这个变量（undefined）      → 落到默认值 "gpt-4o-mini"
+//   .env 里只写了个空（OPENAI_MODEL=）    → 空字符串也算假值 → 还是 "gpt-4o-mini"
+//
 // 为什么不把模型名完全写死？
 //   因为模型选择经常会变：
 //   - 开发环境用便宜模型
@@ -224,6 +240,15 @@ async function callOpenAI() {
   // 什么是异步？
   //   同步（Sync）：排队办事，前一个人没办完，你就得等着
   //   异步（Async）：取号办事，发完请求可以干别的，结果好了会通知你
+  //
+  //   🏠 像点外卖：下单后你不用搬个凳子守在门口干等（订单还在
+  //   "配送中" = Promise 未完成），可以先去干别的；骑手到了
+  //   （Promise resolve）再回来取餐、接着吃饭。
+  //   await 就是"暂停在这里，等骑手到了再继续"的那个动作。
+  //
+  //   写过前端 fetch 的同学可以直接类比：
+  //     const res = await fetch("/api/xxx")
+  //   ← 同一个 await、同一种"等网络响应再往下走"的套路。
   //
   // 为什么要用异步？
   //   调用 API 需要等服务器响应（可能要 1-5 秒）
@@ -269,8 +294,17 @@ async function callOpenAI() {
     // ⚠️ await 只能在 async 函数内部使用！
     //
     // 这一行是整个示例最核心的地方：
-    //   输入：model + max_tokens + messages
-    //   输出：response
+    //
+    // 📤 输入输出走查（把这一行拆开看，以 content: "你好" 为例）：
+    //   发送出去的请求体长这样：
+    //     {
+    //       model: "gpt-4o-mini",
+    //       max_tokens: 1024,
+    //       messages: [{ role: "user", content: "你好" }]
+    //     }
+    //   收回来的 response 是一个大 JSON，
+    //   我们要的答案藏在 response.choices[0].message.content 这条路径里
+    //   （完整响应结构在下方"读取 OpenAI 的响应结果"一节逐层拆解）
     //
     // 绝大多数 agent 框架再复杂，底层都会反复做类似的事情：
     //   1. 准备上下文
@@ -327,6 +361,10 @@ async function callOpenAI() {
 
     messages: [
       // messages 数组：存放对话历史
+      // 🏠 它就是「通话前递给模型的便签」：模型没有记性，
+      //   每次通话都是第一次见你；想让它知道什么（历史对话、背景设定），
+      //   就写成一张张便签一起递进去。
+      //
       // LLM 没有"记忆"，每次调用都要把历史对话一起发过去
       // 这样 AI 才知道上下文（之前聊了什么）
       //
@@ -346,9 +384,10 @@ async function callOpenAI() {
       {
         role: "user",
         // role：这条消息是谁说的
-        // "user" → 用户（你）
-        // "assistant" → AI 助手（模型）
-        // "system" → 系统指令（给 AI 的背景设定，后续课程会讲）
+        // 🏠 role 就是便签上的「落款」，一共三种：
+        //   "user" 落款 → 用户（你）
+        //   "assistant" 落款 → AI 助手（模型）
+        //   "system" 落款 → 系统指令（给 AI 的背景设定，后续课程会讲）
         //
         // 为什么要区分角色？
         //   因为 LLM 是"角色扮演"式工作的
@@ -387,6 +426,7 @@ async function callOpenAI() {
   //  读取 OpenAI 的响应结果
   // ============================================================
   //
+  // 📤 输入输出走查（response 的真实形状，接住上面 create() 发出的请求）：
   // API 返回的 response 是一个复杂的对象，我们来拆解它的结构：
   //
   // response = {
@@ -410,6 +450,11 @@ async function callOpenAI() {
   //     total_tokens: 67                // 总消耗
   //   }
   // }
+
+  // 本节接下来的几行代码，就是照着上面这张"地图"按路径取值：
+  //   response.choices[0]           → choice（第一个候选回复）
+  //   choice.message.content        → 回复正文（终端打印的就是它）
+  //   response.usage.prompt_tokens  → 输入 token 数
 
   const choice = response.choices[0];
   // response.choices 是一个数组，存放 AI 的所有回复选项
@@ -530,6 +575,14 @@ async function callAnthropic() {
   // ============================================================
   //  读取 Anthropic 的响应结果
   // ============================================================
+  //
+  // 📤 输入输出走查（Anthropic 版，同样以"你好"为例）：
+  //   发送：messages.create({
+  //           model, max_tokens,
+  //           messages: [{ role: "user", content: "你好" }]
+  //         })
+  //   收到：response —— 答案在 response.content 数组里
+  //         type === "text" 的那个块中（注意是数组，不是字符串）
   //
   // Anthropic 的返回结构跟 OpenAI 有明显区别：
   //
@@ -655,7 +708,7 @@ async function main() {
   // 3. await Promise.allSettled([callOpenAI(), callAnthropic()])
   //    → 并行执行，每个独立处理成功/失败（快，且健壮）✅ 我们用这个
   //
-  // allSettled 的返回值：
+  // 📤 输入输出走查（allSettled 的返回值）：
   //   [
   //     { status: "fulfilled", value: undefined },  // callOpenAI 成功
   //     { status: "fulfilled", value: undefined },  // callAnthropic 成功
@@ -732,6 +785,11 @@ async function main() {
 //
 // main() 是 async 函数，返回一个 Promise
 // .catch() 用来捕获 main() 中未处理的错误
+//
+// 📤 输入输出走查（这个程序只有两种结局）：
+//   结局 A（一切正常）：main() 完整跑完 → 终端打印两段回复，程序安静退出
+//   结局 B（中途出错）：任何未捕获的错误 → 走上面的 .catch 出口收尾，
+//     程序不会无声崩溃、也不会带着错误继续往下跑
 
 main().catch(console.error);
 // 如果 main() 里的代码抛出了错误，会被 .catch() 捕获

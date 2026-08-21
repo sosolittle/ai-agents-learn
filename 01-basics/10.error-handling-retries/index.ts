@@ -1,6 +1,15 @@
 // ============================================================
 //  第一课补充：error-handling-retries（错误处理与重试）
 //
+//  🏠 生活化比喻：
+//  - 临时错误（429 限流 / 5xx / 超时）= 「对方占线，稍后再拨」——
+//    过一会儿再打可能就通了
+//  - 永久错误（401 key 错 / 400 参数错）= 「空号」——
+//    再拨一百次也是空号，重试毫无意义
+//  - 指数退避 = 「每次敲门比上次多等一会儿，别把门敲坏」
+//  - jitter（随机抖动）= 「楼里所有人别在同一秒挤电梯」——
+//    大量客户端整齐划一地重试，会把刚恢复的服务再次打挂
+//
 //  学习目标：
 //  1. 区分“可以重试”的临时错误和“不该重试”的永久错误
 //  2. 理解指数退避 backoff 与 jitter 的作用
@@ -35,6 +44,9 @@ function isRetryable(error: ApiLikeError) {
   // 429：限流，等一会儿可能恢复。
   // 5xx：服务端临时错误，重试可能成功。
   // 400/401 这类通常是请求或认证问题，重试同样的请求没有意义。
+  //
+  // ⚠️ 把 401/400 放进重试 = 白白烧配额、白等几轮退避——
+  // 认证和参数问题要修代码/配置，不是「再试一次」能解决的。
 }
 
 function errorType(error: ApiLikeError) {
@@ -52,6 +64,14 @@ function backoffWithJitter(attempt: number) {
   return baseDelayMs * 2 ** (attempt - 1) + jitterMs;
   // 指数退避：第 1 次等约 1s，第 2 次等约 2s，第 3 次等约 4s。
   // jitter 是随机抖动，避免大量请求在同一时间整齐地重试，造成二次拥堵。
+  //
+  // 📤 时间线走查（真实参数：base 1000ms，jitter 0–249ms，最多 4 次）：
+  //   请求 → 429 → 等约 1.0–1.25s → 重试
+  //        → 500 → 等约 2.0–2.25s → 重试
+  //        → 成功（前两次失败是代码故意模拟的，见下方 try 块）
+  //   若一路失败到第 4 次：错误原样抛出，不再等待。
+  //   对比：如果第一次就撞上 401（空号），立刻 throw，
+  //   一毫秒都不多等——这就是「占线」和「空号」的待遇差别。
 }
 
 async function callWithRetries(prompt: string) {
@@ -60,6 +80,8 @@ async function callWithRetries(prompt: string) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // for 循环把“最多尝试几次”写得很明确。
     // 每轮要么成功 return，要么遇到错误后判断是否继续。
+    // 前两次的失败是「演」出来的：attempt 1 强制 429、attempt 2 强制 500，
+    // 保证任何环境下都能看到完整的重试日志，之后才发真实请求。
     try {
       // Attempt 1 is intentionally simulated so this example always shows a 429 retry.
       if (attempt === 1) {

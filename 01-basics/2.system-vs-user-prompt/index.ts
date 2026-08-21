@@ -2,6 +2,15 @@
 //  第二课：system-vs-user-prompt
 //  演示 system prompt 和 user prompt 对模型回复的不同影响
 //
+//  🏠 生活化比喻：
+//  把模型想象成一位「随叫随到的全能临时工」：
+//    system prompt → 岗位说明书（JD）：开工前就发给他、全程不变，
+//                    写明他是谁（角色）、服务谁（受众）、怎么干活（格式/边界）
+//    user prompt   → 客户当场提出的问题：每一轮都可能不同，
+//                    他要按 JD 的口径来回答眼前这一个问题
+//  同一位临时工（同一个模型），换一份 JD，回答同一句提问，
+//  口吻和内容就会明显不同——这就是本课要亲眼看到的事。
+//
 //  学习目标：
 //  1. 理解 messages 数组里不同 role 的作用
 //  2. 区分 system prompt 和 user prompt 的职责
@@ -69,6 +78,13 @@ import client from "./src/openai-charles-client";
 // 导入 OpenAI 官方 TypeScript SDK
 // SDK 会帮我们处理 HTTP 请求、鉴权 Header、JSON 序列化和响应解析
 //
+// 注意这里其实有两个导入，分工不同：
+//   OpenAI（SDK 本身）→ 在本文件里只当「类型字典」用：
+//     下面的 OpenAI.ChatCompletionMessageParam 这个类型就来自它
+//   client（./src/openai-charles-client 的默认导出）→ 真正干活的客户端实例：
+//     平时它发请求就像一个普通 OpenAI 客户端（只多三行启动日志）；
+//     设了 USE_CHARLES=1 才会走代理抓包，机制详见那个文件的头部注释
+//
 // 这节课只依赖 OpenAI SDK 的 Chat Completions API。
 // prompt 角色的思想不只属于 OpenAI；
 // 大多数聊天模型 API 都会以某种形式区分系统指令、用户输入和助手回复。
@@ -88,13 +104,19 @@ import client from "./src/openai-charles-client";
 //   这个变量通常来自 .env 文件：
 //     OPENAI_API_KEY=sk-...
 //
-// 如果 API Key 缺失，真正发送请求时会出现鉴权错误
+// 如果 API Key 缺失，错误在哪个阶段出现，取决于"缺"的方式：
+//   完全没有 Key（.env 没写、环境变量也没设）→ openai SDK v4 起在
+//     new OpenAI(...) 这一步就会直接抛错：
+//     "The OPENAI_API_KEY environment variable is missing or empty; ..."
+//   Key 存在但无效或过期 → 构造不报错，真正发送请求时才 401、Unauthorized
 //
-// 注意：创建 client 时传入 undefined 通常不会立刻报错。
-// 真正调用 API 时，SDK 才会发现没有可用凭证。
+// 所以无论在哪一步看到 Key 相关报错，
+// 第一反应都应该是检查 .env 和环境变量，而不是怀疑 prompt 写错了。
 //
-// 所以如果你运行后看到 401、Unauthorized、API key missing 之类错误，
-// 第一反应应该是检查 .env 和环境变量，而不是怀疑 prompt 写错了。
+// 顺带说清：本文件真正用的 client 并不是上面这行（它被注释保留作对照），
+// 而是第一部分导入的 ./src/openai-charles-client——不抓包时，
+// 它发请求的行为与直接 new OpenAI(...) 完全一样；
+// 唯一差别是 import 时会先打三行 [Charles Debug] 体检单日志。
 
 const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 // 默认使用 OpenAI 的学习示例模型
@@ -122,7 +144,7 @@ const userQuestion =
 //   用一个简短段落解释什么是 API rate limit（API 速率限制）
 //
 // 这个 user prompt 自己也带了一个格式约束：
-//   "in one short paragraph"
+//   "用一小段话" —— 要求回答控制在一小段以内
 //
 // 这说明：
 //   并不是所有格式要求都必须放在 system prompt。
@@ -143,7 +165,7 @@ const userQuestion =
 //   - 输出格式：JSON、Markdown、固定字段
 //   - 行为约束：不要编造、不要输出额外解释等
 //
-// 重要提醒：
+// ⚠️ 重要提醒（高危易错点）：
 //   system prompt 能影响模型行为，但它不是安全边界
 //   真正的权限控制、数据校验、危险操作拦截，必须由你的代码完成
 //
@@ -243,6 +265,26 @@ const examples = [
   },
 ];
 
+// 📤 输入输出走查（同一句提问 × 不同 JD，回答会怎么变）：
+//   固定不变的 user 提问（四个用例用的都是它）：
+//     "用一小段话解释什么是 API 速率限制"
+//
+//   换上 JD①「后端开发工程师」：
+//     "你是一位简洁高效的后端开发工程师，请用贴近实际工程开发的语言进行讲解。"
+//     → 预期口吻：直给工程结论，可能出现限流窗口、429 状态码、
+//       令牌桶、网关配额这类后端词，不寒暄、不绕弯
+//
+//   换上 JD②「技术解答客服助手」：
+//     "你是一个优秀且专业的技术解答客服助手，请为非专业用户解释这个问题"
+//     → 预期口吻：礼貌开场，用生活类比（比如「高峰期餐厅要排号」），
+//       尽量不甩术语，最后落到「对您的影响」上
+//
+//   （数组第三个用例更极端：它的 JD 要求只输出含 concept / explanation /
+//    risk / mitigation 四个键的 JSON，回答干脆换了形态。）
+//
+//   同一个模型、同一个问题，唯一变量是 system prompt——
+//   这就是本课实验的控制变量法：变量只有一个，差异才能归因。
+
 // ============================================================
 //  第五部分：运行主流程
 // ============================================================
@@ -269,7 +311,7 @@ async function main() {
     //
     // 每次循环时：
     //   example 会依次变成 examples 数组中的一个对象
-    //   比如第一次是 { label: "No system prompt", systemPrompt: null }
+    //   比如第一次是 { label: "无系统提示词", systemPrompt: null }
 
     // ============================================================
     //  构造 messages 数组
@@ -293,6 +335,18 @@ async function main() {
     //   system → user → assistant → user → assistant → ...
     //
     // 模型会按这个顺序理解上下文。
+    //
+    // 📤 输入输出走查（messages 数组的两种真实形态）：
+    //   轮到「无系统提示词」用例（systemPrompt 为 null）时：
+    //     messages = [
+    //       { role: "user", content: "用一小段话解释什么是 API 速率限制" }
+    //     ]
+    //   轮到「后端开发工程师」用例时：
+    //     messages = [
+    //       { role: "system", content: "你是一位简洁高效的后端开发工程师，请用贴近实际工程开发的语言进行讲解。" },
+    //       { role: "user",   content: "用一小段话解释什么是 API 速率限制" }
+    //     ]
+    //   四轮循环里唯一的变化，就是最前面有没有这张「岗位说明书」。
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       // OpenAI.ChatCompletionMessageParam[] 是 TypeScript 类型标注
@@ -307,6 +361,7 @@ async function main() {
         ? [{ role: "system" as const, content: example.systemPrompt }]
         : []),
       // 这段写法用来"有条件地加入 system 消息"
+      // 🏠 用 JD 比喻说：就是「有岗位说明书时，把 JD 放在便签堆最上面」。
       //
       // 拆开来看：
       //
@@ -371,6 +426,10 @@ async function main() {
       // 这些内容都应该被当成"数据"处理，而不是无条件当成新规则。
     ];
 
+    // 下面这段是保留下来的实验草稿：messages2 只在这里声明，从未被使用——
+    // 真正发给模型的是上面构造好的 messages（见 create({ messages: messages })）。
+    // 想试试「换一个问题再跑一遍」，把那一行改成 messages: messages2 即可
+    // （观察完记得改回来；这个变量本身是作者留的学习痕迹，保持原样）。
     const messages2 = [
       {
         role: "user" as const,
@@ -402,10 +461,13 @@ async function main() {
       // 而不一定来自 system prompt。
 
       max_completion_tokens: 1024,
-      // 限制模型最多生成 220 个输出 token
+      // 限制模型最多生成 1024 个输出 token
       //
-      // 这里的回复都比较短，所以 220 已经足够
-      // 如果 max_tokens 太低，回复可能会被截断
+      // 这里的回复都要求"一小段话"，1024 已经足够
+      // 如果上限太低，回复可能会被截断
+      //
+      // 小知识：max_completion_tokens 是 OpenAI 较新的参数名，
+      // 旧代码里常见的 max_tokens 是它的前身，作用一样。
       //
       // 如果被截断，response.choices[0].finish_reason 通常会是 "length"。
       // 本示例没有打印 finish_reason，是为了保持输出简洁。
@@ -419,7 +481,7 @@ async function main() {
       // 所以你可以直观看到 system prompt 对输出的影响
       //
       // 这就是本课的控制变量实验：
-      //   固定：model、max_tokens、userQuestion
+      //   固定：model、max_completion_tokens、userQuestion
       //   改变：systemPrompt
       //   观察：response 文本如何变化
     });
@@ -431,7 +493,7 @@ async function main() {
     console.log("Case:");
     console.log(example.label);
     // 打印当前示例的名称
-    // 例如：No system prompt / Backend engineering tutor
+    // 例如：无系统提示词 / 后端开发工程师
 
     console.log("\nSystem prompt:");
     console.log(example.systemPrompt ?? "(none)");
@@ -446,6 +508,10 @@ async function main() {
     // 它和 || 的区别：
     //   || 会把空字符串 ""、0、false 也当成"没有值"
     //   ?? 只把 null 和 undefined 当成"没有值"
+    //
+    // 📤 输入输出走查（用本文件的真实数据）：
+    //   「无系统提示词」用例：systemPrompt 是 null → 打印 "(none)"
+    //   「后端开发工程师」用例：systemPrompt 是字符串 → 打印那句 JD 原文
 
     console.log("\nResponse:");
     console.log(response.choices[0].message.content);

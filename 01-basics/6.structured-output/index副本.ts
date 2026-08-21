@@ -1,14 +1,20 @@
 // ============================================================
-//  第一课补充：structured-output（结构化输出）
+//  第一课补充：structured-output（结构化输出）—— function calling 完整版
+//
+//  🏠 比喻一句话带过（完整展开见 index.ts 文件头）：
+//  把模型输出从「手写信」变成「填好的表格」。本文件用的是
+//  约束力更强的做法：function calling（tools + tool_choice）。
+//
+//  与 index.ts 的关系（读代码前先分清两个版本）：
+//  - index.ts：现行版。改用「提示词印表头 + JSON.parse」的土办法
+//    （因 DeepSeek 思考模型不吃 tool_choice），tools 代码块被注释保留
+//  - 本文件（副本）：被注释之前的原版——tools/tool_choice 全部生效，
+//    是 OpenAI 系 API 上约束最强的结构化输出写法，保留供对照学习
 //
 //  学习目标：
-//  1. 理解为什么业务代码通常需要对象/数组，而不是自由文本
-//  2. 学会用 function calling 让模型按 schema 提取字段
-//  3. 看懂 JSON Schema 与 TypeScript interface 的对应关系
-//
-//  这节课的关键点：
-//  模型仍然在“生成文本”，但 function calling 会强迫它把结果放进
-//  tool call 的 arguments 里，从而更接近程序可消费的数据。
+//  1. 看懂 tools 里的 JSON Schema 如何规定模型要填的「表格」
+//  2. 理解 tool_choice 的强制作用，以及拿到结果后为何仍要防御性检查
+//  3. 复习 TS interface ↔ JSON Schema 的对应（展开见 index.ts）
 // ============================================================
 
 import "dotenv/config";
@@ -45,7 +51,8 @@ const RAW_JOB_POST = `
 // PDF、用户粘贴内容或数据库字段。
 
 async function extractJobPosting(text: string): Promise<JobPosting> {
-  // 这个函数把“非结构化文本”转换成“结构化对象”。
+  // 这个函数把“非结构化文本”转换成“结构化对象”——把「手写信」
+  // 整理成「表格」（比喻的完整展开见 index.ts 文件头）。
   // 很多 agent 工作流都会先抽取结构，再做路由、检索、评估或入库。
   const response = await client.chat.completions.create({
     model: model,
@@ -55,6 +62,9 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
         content: `请从下面这段职位描述中提取结构化信息：\n\n${text}`,
       },
     ],
+    // tools 数组：把「表格的表头规定」用 JSON Schema 写出来发给模型。
+    // 注意这个工具并不需要真的执行——我们借它的 arguments
+    // 当「结构化输出通道」：模型必须按 schema 把字段填好交上来。
     tools: [
       {
         type: "function",
@@ -86,6 +96,8 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
               },
               seniority_level: {
                 type: "string",
+                // enum = 「只能从这几个里选」，对应 TS 的联合类型
+                // "junior" | "mid" | ...（表头里的「勾选项」）
                 enum: ["junior", "mid", "senior", "lead", "unknown"],
               },
             },
@@ -101,7 +113,9 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
         },
       },
     ],
-    // 强制模型调用我们的工具，而不是返回自由文本。
+    // 强制模型调用我们的工具，而不是返回自由文本：
+    // 不强制时模型可能回你一封「手写信」；强制之后它只能去
+    // 「填表格」——把每个字段填进 arguments 里交上来。
     tool_choice: { type: "function", function: { name: "extract_job_posting" } },
     // 强制 tool_choice 后，模型不能只写一段说明文字。
     // 它必须调用 extract_job_posting，并把字段放进 arguments。
@@ -112,6 +126,8 @@ async function extractJobPosting(text: string): Promise<JobPosting> {
   // 即使我们强制了 tool_choice，工程代码也仍然要检查异常情况。
   // 网络错误、模型兼容性、供应商差异都可能导致没有 tool_call。
 
+  // ⚠️ 注意：toolCall.function.arguments 是「字符串化的 JSON」而不是
+  // 对象——模型填的表格是当成文本传回来的，所以这里还要 parse 一次。
   return JSON.parse(toolCall.function.arguments) as JobPosting;
   // 这里为了保持示例简洁只做 JSON.parse。
   // 生产代码建议再用 Zod 等工具做一次 schema 校验。

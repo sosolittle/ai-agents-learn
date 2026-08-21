@@ -1,6 +1,15 @@
 // ============================================================
 //  第一课补充：input-output-validation（输入/输出校验）
 //
+//  🏠 生活化比喻：
+//  Zod schema = 小区门禁闸机：
+//    - 访客（用户输入）进门先刷证（safeParse），证件不合格
+//      直接拦下，还会告诉你哪里不对（error.issues）
+//    - 小区还有一个「开箱验货」口：快递（模型输出）看着是包裹，
+//      装没装对要拆开看——模型的本职是「生成文本」，它吐的 JSON
+//      可能缺字段、多个引号、套着 ```json 围栏，
+//      必须 parse + 校验都通过才算数
+//
 //  学习目标：
 //  1. 明白用户输入不能直接相信，模型输出也不能直接相信
 //  2. 学会用 Zod 校验输入长度、空值和结构化输出
@@ -11,6 +20,10 @@
 //  - 离开模型后：再校验模型输出
 //
 //  这不是不信任模型，而是把不确定性关在边界外。
+//
+//  本文件现状：main() 里真实调用模型的演示被注释保留，
+//  当前生效的是 8 个「手写的模型坏输出」用例——不联网、不花 token，
+//  就能看清输出校验的每一道关怎么拦人。
 // ============================================================
 
 import "dotenv/config";
@@ -29,6 +42,11 @@ const UserTextSchema = z
   .max(500, "Text must be 500 characters or fewer.");
 // UserTextSchema 定义“用户文本必须满足什么条件”。
 // trim() 会先去掉首尾空白，所以 "   " 会被当成空字符串拒绝。
+//
+// 📤 输入输出走查（闸机怎么拦人，报错文案就是代码里的原文）：
+//   "   "（全是空格）   → trim 后变 "" → min(1) 拦下："Text cannot be empty."
+//   长度 500+ 的文本    → max(500) 拦下："Text must be 500 characters or fewer."
+//   " 产品很好用 "      → trim 后通过，result.data 是 "产品很好用"
 
 const AnalysisSchema = z.object({
   summary: z.string(),
@@ -46,11 +64,20 @@ function validateInput(text: string) {
   return UserTextSchema.safeParse(text);
   // safeParse 不会抛异常，而是返回 { success: true/false }。
   // 初学时推荐用 safeParse，因为控制流更清楚。
+  //
+  // ⚠️ parse vs safeParse（一对容易混淆的兄弟方法）：
+  //   schema.parse(x)     → 不合格直接 throw，不 try/catch 程序就崩
+  //   schema.safeParse(x) → 永不 throw，成败装进返回值自己处理
+  //   本文件全用 safeParse：校验失败是「预期内的业务分支」（打印原因、
+  //   走兜底逻辑），不是「程序错误」，不该靠异常跳来跳去。
 }
 
 function parseJsonObject(raw: string) {
   // 模型返回的 content 本质上是字符串。即使 prompt 要求 JSON，
   // 代码也必须先 JSON.parse，不能假设它已经是对象。
+  // JSON.parse 的麻烦在于解析失败会直接 throw，这里手动包一层，
+  // 把「抛异常」翻译成 { ok: false }——和 safeParse 同一个思路：
+  // 失败当数据，不当事故。
   try {
     return { ok: true as const, value: JSON.parse(raw) };
   } catch (error) {
@@ -62,9 +89,9 @@ function parseJsonObject(raw: string) {
 }
 
 function validateModelOutput(raw: string): Analysis | null {
-  // 输出校验分两步：
-  // 1. 字符串能不能解析成 JSON
-  // 2. 解析后的对象是否符合 AnalysisSchema
+  // 输出校验分两步（开箱验货的两道关）：
+  // 1. 拆包裹：字符串能不能 parse 成 JSON（parseJsonObject）
+  // 2. 验货：parse 出的对象是否符合 AnalysisSchema（safeParse）
   const parsed = parseJsonObject(raw);
 
   if (!parsed.ok) {
@@ -173,6 +200,10 @@ async function main() {
   // validateModelOutput(brokenRaw);
 
 
+  // 8 个手写的「模型坏输出」用例：不用真调模型、不花 token，
+  // 就能逐个看 validateModelOutput 怎么拦截。覆盖了实际会遇到的
+  // 几乎全部翻车姿势：空字符串 / 纯文本 / JSON 被截断 / 带 ```json
+  // 围栏 / 缺字段 / 字段类型错 / 枚举值不合法 / 顶层不是对象。
   const outputFailureCases = [
     {
       label: "empty response",
