@@ -43,7 +43,7 @@ import client from "./src/openai-charles-client";
 // const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // ↑ 被注释的「直连版」写法，保留作对照。
 
-const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const model = process.env.DEEPSEEK_FLASH_MODEL || "gpt-4o-mini";
 // 模型名：.env 里配了 OPENAI_MODEL 就用配置的，否则默认 gpt-4o-mini。
 
 // The most important constant in any agent.
@@ -78,7 +78,7 @@ const MAX_ITERATIONS = 15;
 //   FILES["src/auth.ts"]  → 一整段 auth.ts 的源代码字符串
 //   FILES["nope.ts"]      → undefined → readFile 返回「未找到文件」
 const FILES: Record<string, string> = {
-  "src/auth.ts": `
+    "src/auth.ts": `
 import jwt from "jsonwebtoken";
 
 export function createToken(userId: string) {
@@ -91,7 +91,7 @@ export function verifyToken(token: string) {
 }
   `.trim(),
 
-  "src/db.ts": `
+    "src/db.ts": `
 import mysql from "mysql2";
 
 export function getConnection() {
@@ -110,7 +110,7 @@ export function queryUser(id: string) {
 }
   `.trim(),
 
-  "src/api.ts": `
+    "src/api.ts": `
 import express from "express";
 import { queryUser } from "./db";
 
@@ -132,7 +132,7 @@ app.post("/upload", (req, res) => {
 export default app;
   `.trim(),
 
-  "src/utils.ts": `
+    "src/utils.ts": `
 export function formatDate(date: Date): string {
   return date.toISOString().split("T")[0];
 }
@@ -153,19 +153,19 @@ export function truncate(str: string, max: number): string {
 // ---------------------------------------------------------------------------
 
 function listFiles(): string {
-  // 工具 1：列出可审查文件。agent 不应该凭空知道有哪些文件。
-  // TS 语法：Object.keys(对象) 拿到所有键组成的数组；
-  // JSON.stringify 再把数组变成文本（tool 消息的 content 要字符串）。
-  // 📤 走查：返回 '["src/auth.ts","src/db.ts","src/api.ts","src/utils.ts"]'
-  return JSON.stringify(Object.keys(FILES));
+    // 工具 1：列出可审查文件。agent 不应该凭空知道有哪些文件。
+    // TS 语法：Object.keys(对象) 拿到所有键组成的数组；
+    // JSON.stringify 再把数组变成文本（tool 消息的 content 要字符串）。
+    // 📤 走查：返回 '["src/auth.ts","src/db.ts","src/api.ts","src/utils.ts"]'
+    return JSON.stringify(Object.keys(FILES));
 }
 
 function readFile(path: string): string {
-  // 工具 2：读取某个文件。只有读过文件，模型才能基于真实内容审查。
-  // 路径必须和 list_files 返回的完全一致——拼错一点就是 undefined。
-  const content = FILES[path];
-  if (!content) return `未找到文件：${path}`;
-  return content;
+    // 工具 2：读取某个文件。只有读过文件，模型才能基于真实内容审查。
+    // 路径必须和 list_files 返回的完全一致——拼错一点就是 undefined。
+    const content = FILES[path];
+    if (!content) return `未找到文件：${path}`;
+    return content;
 }
 
 // Terminal tool（终止工具）——agent 一旦调用它，任务就算完成。
@@ -179,11 +179,11 @@ function readFile(path: string): string {
 let finalReport: string | null = null;
 
 function writeReport(content: string): string {
-  // 工具 3：终止工具。模型调用它表示“我已经完成任务，要输出最终报告”。
-  finalReport = content;
-  // 返回一句确认语——它也会作为 tool 结果回到模型那里，
-  // 只是这一圈循环马上就要退出了，确认语主要给我们自己的日志看。
-  return "报告已保存。";
+    // 工具 3：终止工具。模型调用它表示“我已经完成任务，要输出最终报告”。
+    finalReport = content;
+    // 返回一句确认语——它也会作为 tool 结果回到模型那里，
+    // 只是这一圈循环马上就要退出了，确认语主要给我们自己的日志看。
+    return "报告已保存。";
 }
 
 // ---------------------------------------------------------------------------
@@ -197,52 +197,52 @@ function writeReport(content: string): string {
 // ---------------------------------------------------------------------------
 
 const tools: OpenAI.Chat.ChatCompletionTool[] = [
-  {
-    type: "function",
-    function: {
-      name: "list_files",
-      description: "列出所有可供审查的源代码文件",
-      parameters: { type: "object", properties: {}, required: [] },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "read_file",
-      description: "读取指定源代码文件的完整内容",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "文件路径，必须与 list_files 返回的路径完全一致，例如 src/auth.ts",
-          },
+    {
+        type: "function",
+        function: {
+            name: "list_files",
+            description: "列出所有可供审查的源代码文件",
+            parameters: {type: "object", properties: {}, required: []},
         },
-        required: ["path"],
-      },
     },
-  },
-  {
-    type: "function",
-    function: {
-      name: "write_report",
-      // TS 语法：多个字符串用 + 拼接——纯粹为了排版（一行太长），
-      // 拼出来的效果和写成一整行一模一样。
-      description:
-        "编写最终安全审计报告。审查完所有文件并汇总全部发现后调用此工具。" +
-        "报告应按严重程度组织问题。调用此工具将结束审计。",
-      parameters: {
-        type: "object",
-        properties: {
-          content: {
-            type: "string",
-            description: "使用 Markdown 格式编写的完整中文安全审计报告",
-          },
+    {
+        type: "function",
+        function: {
+            name: "read_file",
+            description: "读取指定源代码文件的完整内容",
+            parameters: {
+                type: "object",
+                properties: {
+                    path: {
+                        type: "string",
+                        description: "文件路径，必须与 list_files 返回的路径完全一致，例如 src/auth.ts",
+                    },
+                },
+                required: ["path"],
+            },
         },
-        required: ["content"],
-      },
     },
-  },
+    {
+        type: "function",
+        function: {
+            name: "write_report",
+            // TS 语法：多个字符串用 + 拼接——纯粹为了排版（一行太长），
+            // 拼出来的效果和写成一整行一模一样。
+            description:
+                "编写最终安全审计报告。审查完所有文件并汇总全部发现后调用此工具。" +
+                "报告应按严重程度组织问题。调用此工具将结束审计。",
+            parameters: {
+                type: "object",
+                properties: {
+                    content: {
+                        type: "string",
+                        description: "使用 Markdown 格式编写的完整中文安全审计报告",
+                    },
+                },
+                required: ["content"],
+            },
+        },
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -258,11 +258,11 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
 // ---------------------------------------------------------------------------
 
 function parseToolArgs(raw: string): Record<string, string> {
-  try {
-    return JSON.parse(raw) as Record<string, string>;
-  } catch {
-    return {};
-  }
+    try {
+        return JSON.parse(raw) as Record<string, string>;
+    } catch {
+        return {};
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -275,20 +275,20 @@ function parseToolArgs(raw: string): Record<string, string> {
 // ---------------------------------------------------------------------------
 
 function executeTool(name: string, args: Record<string, string>): string {
-  // 所有工具请求都经过这里，便于集中做参数校验和权限控制。
-  switch (name) {
-    case "list_files":
-      return listFiles();
-    case "read_file":
-      if (!args.path) return "缺少必填参数：path";
-      return readFile(args.path);
-    case "write_report":
-      if (!args.content) return "缺少必填参数：content";
-      return writeReport(args.content);
-    default:
-      // The model can hallucinate a tool name — always handle the unknown case.
-      return `未知工具："${name}"`;
-  }
+    // 所有工具请求都经过这里，便于集中做参数校验和权限控制。
+    switch (name) {
+        case "list_files":
+            return listFiles();
+        case "read_file":
+            if (!args.path) return "缺少必填参数：path";
+            return readFile(args.path);
+        case "write_report":
+            if (!args.content) return "缺少必填参数：content";
+            return writeReport(args.content);
+        default:
+            // The model can hallucinate a tool name — always handle the unknown case.
+            return `未知工具："${name}"`;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -319,114 +319,114 @@ function executeTool(name: string, args: Record<string, string>): string {
 // TS 语法：Promise<string> —— async 函数的返回类型，
 // 「将来会产出一个 string 的凭证」，调用方用 await 接。
 async function runAgent(goal: string): Promise<string> {
-  // 和 02-tool-use 最大的区别：
-  // 这里用户给的是一个目标，而不是一个具体问题。
-  // 模型自己决定需要调用哪些工具、调用顺序是什么。
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    {
-      // system 提示词是「岗位说明书」：角色（安全审计员）+ 工作流程
-      // （先列文件 → 逐个读 → 全读完才能交报告）+ 交付物格式
-      // （中文、按严重程度分级）。
-      // 注意它只规定了流程约束，没有规定具体先读哪个文件——
-      // 那是模型自己权衡的事。约束「完成标准」、放开「执行顺序」，
-      // 是写 agent 提示词的核心手感。
-      // （多个字符串用 + 拼接只是为了排版，见第三部分的语法说明。）
-      role: "system",
-      content:
-        "你是一名代码安全审计员。" +
-        "首先列出所有文件，然后逐一仔细阅读。" +
-        "只有审查完每个文件后，才能调用 write_report。" +
-        "请使用中文撰写报告，并按严重程度组织发现：严重、高危、中危。",
-    },
-    { role: "user", content: goal },
-  ];
+    // 和 02-tool-use 最大的区别：
+    // 这里用户给的是一个目标，而不是一个具体问题。
+    // 模型自己决定需要调用哪些工具、调用顺序是什么。
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        {
+            // system 提示词是「岗位说明书」：角色（安全审计员）+ 工作流程
+            // （先列文件 → 逐个读 → 全读完才能交报告）+ 交付物格式
+            // （中文、按严重程度分级）。
+            // 注意它只规定了流程约束，没有规定具体先读哪个文件——
+            // 那是模型自己权衡的事。约束「完成标准」、放开「执行顺序」，
+            // 是写 agent 提示词的核心手感。
+            // （多个字符串用 + 拼接只是为了排版，见第三部分的语法说明。）
+            role: "system",
+            content:
+                "你是一名代码安全审计员。" +
+                "首先列出所有文件，然后逐一仔细阅读。" +
+                "只有审查完每个文件后，才能调用 write_report。" +
+                "请使用中文撰写报告，并按严重程度组织发现：严重、高危、中危。",
+        },
+        {role: "user", content: goal},
+    ];
 
-  // let： iteration 会被 ++ 修改，所以不能用 const。
-  let iteration = 0;
+    // let： iteration 会被 ++ 修改，所以不能用 const。
+    let iteration = 0;
 
-  console.log(`目标：${goal}\n`);
+    console.log(`目标：${goal}\n`);
 
-  // 无限循环：出口有两个（A=模型直接说话，B=交报告），
-  // 外加一道保险丝（迭代上限）。
-  while (true) {
-    // TS 语法：iteration++ = 先用再加一的简洁写法（这里只用其副作用）。
-    iteration++;
+    // 无限循环：出口有两个（A=模型直接说话，B=交报告），
+    // 外加一道保险丝（迭代上限）。
+    while (true) {
+        // TS 语法：iteration++ = 先用再加一的简洁写法（这里只用其副作用）。
+        iteration++;
 
-    // Circuit breaker — remove this and a confused model runs until rate-limited.
-    // 保险丝：超过上限就抛错终止。抛错而不是悄悄 return，
-    // 是为了让「任务没完成」这件事响亮地暴露出来。
-    if (iteration > MAX_ITERATIONS) {
-      throw new Error(
-        `Agent exceeded ${MAX_ITERATIONS} iterations without completing the task. ` +
-          `This usually means the model is stuck in a loop or the goal is too vague.`
-      );
-    }
-
-    console.log(`[第 ${iteration} 次迭代]`);
-
-    // 每圈一次真实模型调用：带上完整历史 + 工具菜单。
-    const response = await client.chat.completions.create({
-      model: model,
-      messages,
-      tools,
-      tool_choice: "auto",
-    });
-
-    const choice = response.choices[0];
-    // 模型这条回复必须进历史（tool 消息要紧跟发起调用的 assistant 消息）
-    messages.push(choice.message); // always append — model needs its own history
-
-    // 出口 A：模型不再调工具、直接说话了。
-    // 本 demo 正常走不到这里（system 要求先 write_report），
-    // 但作为兜底保留——万一模型「忘了」交报告直接聊天，
-    // 也能把它的回答当作结果返回，不至于卡死。
-    if (choice.finish_reason === "stop") {
-      console.log();
-      // ?? 空值合并：content 为 null 时兜成空串
-      return choice.message.content ?? "";
-    }
-
-    if (choice.finish_reason === "tool_calls") {
-      const toolCalls = choice.message.tool_calls ?? [];
-
-      for (const call of toolCalls) {
-        // arguments 是 JSON 字符串，先解析成对象（见第四部分）
-        const args = parseToolArgs(call.function.arguments);
-        const displayArgs = JSON.stringify(args);
-        // 小细节：参数为空（"{}"）时日志里就不显示括号内容，
-        // 让 list_files() 看起来更清爽——只影响打印，不影响逻辑。
-        // TS 语法：条件表达式 条件 ? 真值 : 假值 的内联写法。
-        console.log(`  → ${call.function.name}(${displayArgs === "{}" ? "" : displayArgs})`);
-
-        const result = executeTool(call.function.name, args);
-
-        // 出口 B：终止工具被调用了——agent 宣布完成。
-        if (call.function.name === "write_report" && finalReport !== null) {
-          // write_report 已经把 finalReport 设置好，说明任务显式完成。
-          // 这比“模型不再调用工具”更可靠。
-          console.log(`  ← 报告已写入（${finalReport.length} 个字符）\n`);
-          // Push the result so message history stays valid, then exit cleanly.
-          // 先把 tool 结果补进历史再 return：
-          // 每个工具申请都必须有一条配对的 tool 消息，否则历史就是
-          // 非法的。虽然马上要退出了，也别留下破损的 messages。
-          messages.push({ role: "tool", tool_call_id: call.id, content: result });
-          return finalReport;
+        // Circuit breaker — remove this and a confused model runs until rate-limited.
+        // 保险丝：超过上限就抛错终止。抛错而不是悄悄 return，
+        // 是为了让「任务没完成」这件事响亮地暴露出来。
+        if (iteration > MAX_ITERATIONS) {
+            throw new Error(
+                `Agent exceeded ${MAX_ITERATIONS} iterations without completing the task. ` +
+                `This usually means the model is stuck in a loop or the goal is too vague.`
+            );
         }
 
-        // Truncate long results in the log — full content still goes into messages.
-        // 日志里只显示前 80 个字符（文件内容太长会刷屏），
-        // 但塞进 messages 的是完整 result——模型看到的不能缩水。
-        // TS 语法：三元 + slice(0, 80)（取前 80 个字符）+ 字符串拼接。
-        const preview = result.length > 80 ? result.slice(0, 80) + "…" : result;
-        console.log(`  ← ${preview}`);
+        console.log(`[第 ${iteration} 次迭代]`);
 
-        messages.push({ role: "tool", tool_call_id: call.id, content: result });
-      }
+        // 每圈一次真实模型调用：带上完整历史 + 工具菜单。
+        const response = await client.chat.completions.create({
+            model: model,
+            messages,
+            tools,
+            tool_choice: "auto",
+        });
 
-      console.log();
-      // 干完这圈的活，回到 while 顶部：带着新历史让模型想下一步
+        const choice = response.choices[0];
+        // 模型这条回复必须进历史（tool 消息要紧跟发起调用的 assistant 消息）
+        messages.push(choice.message); // always append — model needs its own history
+
+        // 出口 A：模型不再调工具、直接说话了。
+        // 本 demo 正常走不到这里（system 要求先 write_report），
+        // 但作为兜底保留——万一模型「忘了」交报告直接聊天，
+        // 也能把它的回答当作结果返回，不至于卡死。
+        if (choice.finish_reason === "stop") {
+            console.log();
+            // ?? 空值合并：content 为 null 时兜成空串
+            return choice.message.content ?? "";
+        }
+
+        if (choice.finish_reason === "tool_calls") {
+            const toolCalls = choice.message.tool_calls ?? [];
+
+            for (const call of toolCalls) {
+                // arguments 是 JSON 字符串，先解析成对象（见第四部分）
+                const args = parseToolArgs(call.function.arguments);
+                const displayArgs = JSON.stringify(args);
+                // 小细节：参数为空（"{}"）时日志里就不显示括号内容，
+                // 让 list_files() 看起来更清爽——只影响打印，不影响逻辑。
+                // TS 语法：条件表达式 条件 ? 真值 : 假值 的内联写法。
+                console.log(`  → ${call.function.name}(${displayArgs === "{}" ? "" : displayArgs})`);
+
+                const result = executeTool(call.function.name, args);
+
+                // 出口 B：终止工具被调用了——agent 宣布完成。
+                if (call.function.name === "write_report" && finalReport !== null) {
+                    // write_report 已经把 finalReport 设置好，说明任务显式完成。
+                    // 这比“模型不再调用工具”更可靠。
+                    console.log(`  ← 报告已写入（${finalReport.length} 个字符）\n`);
+                    // Push the result so message history stays valid, then exit cleanly.
+                    // 先把 tool 结果补进历史再 return：
+                    // 每个工具申请都必须有一条配对的 tool 消息，否则历史就是
+                    // 非法的。虽然马上要退出了，也别留下破损的 messages。
+                    messages.push({role: "tool", tool_call_id: call.id, content: result});
+                    return finalReport;
+                }
+
+                // Truncate long results in the log — full content still goes into messages.
+                // 日志里只显示前 80 个字符（文件内容太长会刷屏），
+                // 但塞进 messages 的是完整 result——模型看到的不能缩水。
+                // TS 语法：三元 + slice(0, 80)（取前 80 个字符）+ 字符串拼接。
+                const preview = result.length > 80 ? result.slice(0, 80) + "…" : result;
+                console.log(`  ← ${preview}`);
+
+                messages.push({role: "tool", tool_call_id: call.id, content: result});
+            }
+
+            console.log();
+            // 干完这圈的活，回到 while 顶部：带着新历史让模型想下一步
+        }
     }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -434,64 +434,64 @@ async function runAgent(goal: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  // 注意 user 消息是「目标」而不是「问题」：没有问哪个文件、
-  // 没有规定顺序，只说了两件事——查漏洞 + 全部看完再写报告。
-  //
-  // 📤 输入输出走查（控制台预期输出，大意）：
-  //   目标：审查此代码库中存在的安全漏洞。请在撰写报告前审查每一个文件。
-  //
-  //   [第 1 次迭代]
-  //     → list_files()
-  //     ← ["src/auth.ts","src/db.ts","src/api.ts","src/utils.ts"]
-  //        ↑ 模型先「摸清家底」——它事先并不知道有哪些文件
-  //
-  //   [第 2 次迭代]
-  //     → read_file({"path":"src/auth.ts"})
-  //     ← import jwt from "jsonwebtoken";…（日志只显示前 80 字符，
-  //        完整内容已进 messages）模型从中发现硬编码密钥
-  //
-  //   [第 3 次迭代]
-  //     → read_file({"path":"src/db.ts"})
-  //     ← …发现 admin123 弱口令 + SQL 字符串拼接注入
-  //
-  //   [第 4 次迭代]
-  //     → read_file({"path":"src/api.ts"})
-  //     ← …发现上传文件名未校验（路径穿越风险）
-  //
-  //   [第 5 次迭代]
-  //     → read_file({"path":"src/utils.ts"})
-  //     ← …干净的纯工具函数，没有问题
-  //
-  //   [第 6 次迭代]
-  //     → write_report({"content":"# 安全审计报告\n…"})
-  //     ← 报告已写入（约 1000+ 个字符）
-  //
-  //   ─────────────────────────────
-  //   最终报告：
-  //   # 安全审计报告
-  //   ## 严重
-  //   - src/auth.ts：JWT 密钥硬编码（hardcoded-secret-123）…
-  //   - src/db.ts：SQL 注入（用户输入直接拼接进查询）…
-  //   ## 高危
-  //   - src/db.ts：数据库弱口令 admin123…
-  //   - src/api.ts：上传文件名未校验，存在路径穿越…
-  //   ## 中危 / 无问题
-  //   - src/utils.ts：未发现问题…
-  //
-  // 两个值得体会的点：
-  // 1. 顺序是模型自己定的（受 system 提示词「先列清单再逐个读」约束，
-  //    但每个文件何时读、何时收工都是它自己判断的）；
-  // 2. 每次运行细节会有差异（比如先读哪个文件、报告的措辞和分级），
-  //    这正是 agent 的特点——确定的是流程和不变量，不确定的是路径。
-  //    所以后面的模块会专门讲怎么给 agent 加「护栏」和「验收」。
-  const report = await runAgent(
-    "审查此代码库中存在的安全漏洞。" +
-      "请在撰写报告前审查每一个文件。"
-  );
+    // 注意 user 消息是「目标」而不是「问题」：没有问哪个文件、
+    // 没有规定顺序，只说了两件事——查漏洞 + 全部看完再写报告。
+    //
+    // 📤 输入输出走查（控制台预期输出，大意）：
+    //   目标：审查此代码库中存在的安全漏洞。请在撰写报告前审查每一个文件。
+    //
+    //   [第 1 次迭代]
+    //     → list_files()
+    //     ← ["src/auth.ts","src/db.ts","src/api.ts","src/utils.ts"]
+    //        ↑ 模型先「摸清家底」——它事先并不知道有哪些文件
+    //
+    //   [第 2 次迭代]
+    //     → read_file({"path":"src/auth.ts"})
+    //     ← import jwt from "jsonwebtoken";…（日志只显示前 80 字符，
+    //        完整内容已进 messages）模型从中发现硬编码密钥
+    //
+    //   [第 3 次迭代]
+    //     → read_file({"path":"src/db.ts"})
+    //     ← …发现 admin123 弱口令 + SQL 字符串拼接注入
+    //
+    //   [第 4 次迭代]
+    //     → read_file({"path":"src/api.ts"})
+    //     ← …发现上传文件名未校验（路径穿越风险）
+    //
+    //   [第 5 次迭代]
+    //     → read_file({"path":"src/utils.ts"})
+    //     ← …干净的纯工具函数，没有问题
+    //
+    //   [第 6 次迭代]
+    //     → write_report({"content":"# 安全审计报告\n…"})
+    //     ← 报告已写入（约 1000+ 个字符）
+    //
+    //   ─────────────────────────────
+    //   最终报告：
+    //   # 安全审计报告
+    //   ## 严重
+    //   - src/auth.ts：JWT 密钥硬编码（hardcoded-secret-123）…
+    //   - src/db.ts：SQL 注入（用户输入直接拼接进查询）…
+    //   ## 高危
+    //   - src/db.ts：数据库弱口令 admin123…
+    //   - src/api.ts：上传文件名未校验，存在路径穿越…
+    //   ## 中危 / 无问题
+    //   - src/utils.ts：未发现问题…
+    //
+    // 两个值得体会的点：
+    // 1. 顺序是模型自己定的（受 system 提示词「先列清单再逐个读」约束，
+    //    但每个文件何时读、何时收工都是它自己判断的）；
+    // 2. 每次运行细节会有差异（比如先读哪个文件、报告的措辞和分级），
+    //    这正是 agent 的特点——确定的是流程和不变量，不确定的是路径。
+    //    所以后面的模块会专门讲怎么给 agent 加「护栏」和「验收」。
+    const report = await runAgent(
+        "审查此代码库中存在的安全漏洞。" +
+        "请在撰写报告前审查每一个文件。"
+    );
 
-  console.log("─".repeat(60));
-  console.log("\n最终报告：\n");
-  console.log(report);
+    console.log("─".repeat(60));
+    console.log("\n最终报告：\n");
+    console.log(report);
 }
 
 // 顶层兜底：任何一圈抛出的错误（含保险丝熔断的「超过最大迭代」）
