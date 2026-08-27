@@ -1,0 +1,111 @@
+{
+    "request": {
+        "model": "deepseek-v4-flash",
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是一名代码安全审计员。首先列出所有文件，然后逐一仔细阅读。只有审查完每个文件后，才能调用 write_report。请使用中文撰写报告，并按严重程度组织发现：严重、高危、中危。"
+            },
+            {
+                "role": "user",
+                "content": "审查此代码库中存在的安全漏洞。请在撰写报告前审查每一个文件。"
+            }
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_files",
+                    "description": "列出所有可供审查的源代码文件",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_file",
+                    "description": "读取指定源代码文件的完整内容",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": "文件路径，必须与 list_files 返回的路径完全一致，例如 src/auth.ts"
+                            }
+                        },
+                        "required": [
+                            "path"
+                        ]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "write_report",
+                    "description": "编写最终安全审计报告。审查完所有文件并汇总全部发现后调用此工具。报告应按严重程度组织问题。调用此工具将结束审计。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "使用 Markdown 格式编写的完整中文安全审计报告"
+                            }
+                        },
+                        "required": [
+                            "content"
+                        ]
+                    }
+                }
+            }
+        ],
+        "tool_choice": "auto"
+    },
+    "response": {
+        "id": "97e156bf-6ce2-4425-9381-aa0680c066e1",
+        "object": "chat.completion",
+        "created": 1787815621,
+        "model": "deepseek-v4-flash",
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "我将开始审查此代码库。首先列出所有文件。",
+                    "reasoning_content": "Let me start by listing all files in the codebase.",
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": "call_00_v5KBKqw6j1S3vx1MHjoy6736",
+                            "type": "function",
+                            "function": {
+                                "name": "list_files",
+                                "arguments": "{}"
+                            }
+                        }
+                    ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 566,
+            "completion_tokens": 51,
+            "total_tokens": 617,
+            "prompt_tokens_details": {
+                "cached_tokens": 512
+            },
+            "completion_tokens_details": {
+                "reasoning_tokens": 12
+            },
+            "prompt_cache_hit_tokens": 512,
+            "prompt_cache_miss_tokens": 54
+        },
+        "system_fingerprint": "a26a7955944dc5c60445bff77fac9c8e"
+    }
+}
