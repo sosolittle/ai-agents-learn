@@ -177,17 +177,17 @@ npm start
 You'll see each iteration logged as the agent searches:
 
 ```
-Question: What are the most notable new features in Node.js 22, and is it LTS yet?
+问题：Node.js 22 有哪些值得关注的新特性？它进入 LTS 了吗？
 
-[iteration 1]
-  → web_search("Node.js 22 new features")
+[第 1 次迭代]
+  → 调用 web_search("Node.js 22 new features")
   ← [1] Node.js 22 Release: What's New? | URL: ...
 
-[iteration 2]
-  → web_search("Node.js 22 LTS release date schedule")
+[第 2 次迭代]
+  → 调用 web_search("Node.js 22 LTS release date schedule")
   ← [1] Node.js Release Schedule | URL: ...
 
-  → write_answer (1204 chars)
+  → 调用 write_answer（1204 字符）
 ```
 
 ---
@@ -197,21 +197,21 @@ Question: What are the most notable new features in Node.js 22, and is it LTS ye
 A realistic transcript for the default question:
 
 ```
-Question: What are the most notable new features in Node.js 22, and is it LTS yet?
+问题：Node.js 22 有哪些值得关注的新特性？它进入 LTS 了吗？
 
-[iteration 1]
-  → web_search("Node.js 22 new features 2024")
+[第 1 次迭代]
+  → 调用 web_search("Node.js 22 new features 2024")
   ← [1] Node.js 22 is now available! | URL: https://nodejs.org/en/blog/announcements/v22-release-announce…
 
-[iteration 2]
-  → web_search("Node.js 22 LTS status release schedule")
+[第 2 次迭代]
+  → 调用 web_search("Node.js 22 LTS status release schedule")
   ← [1] Releases | Node.js | URL: https://nodejs.org/en/about/previous-releases…
 
-  → write_answer (1521 chars)
+  → 调用 write_answer（1521 字符）
 
 ────────────────────────────────────────────────────────────
 
-Answer:
+答案：
 
 ## Node.js 22 — Notable Features and LTS Status
 

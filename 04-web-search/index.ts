@@ -38,6 +38,8 @@ import "dotenv/config";
 import OpenAI from "openai";
 import client from "./src/openai-charles-client"
 
+const model = process.env.DEEPSEEK_FLASH_MODEL || "gpt-4o-mini";
+
 // const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 // Tavily 是外部搜索服务，所以除了 OPENAI_API_KEY，还需要 TAVILY_API_KEY。
@@ -102,7 +104,7 @@ async function webSearch(query: string): Promise<string> {
         // 注意是「返回错误文本」而不是抛错——错误信息也会作为 tool 结果
         // 回到模型那里，它下一圈能换关键词重试，而不是整个循环崩掉。
         // response.ok = 状态码在 200~299；.status/.statusText 如 401 / "Unauthorized"。
-        return `Search failed: ${response.status} ${response.statusText}`;
+        return `搜索失败：${response.status} ${response.statusText}`;
     }
 
     const data = (await response.json()) as TavilyResponse;
@@ -115,7 +117,7 @@ async function webSearch(query: string): Promise<string> {
         // 出口 2：请求成功，但一条结果都没有（关键词太偏？）。
         // TS 语法：?. 可选链——results 为 null/undefined 时直接短路成
         // undefined，而不是抛 "Cannot read properties of undefined"。
-        return "No results found for that query.";
+        return "未找到与该查询相关的结果。";
     }
 
     // Format results as plain text — the model reads this, not JSON.
@@ -167,17 +169,16 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
         function: {
             name: "web_search",
             description:
-                "Search the web for current information. Use this whenever you need facts, " +
-                "recent events, or data you don't know. You can call this multiple times with " +
-                "different queries to build a complete picture before writing your answer.",
+                "搜索网络以获取最新信息。当你需要事实、近期事件或自己不知道的数据时使用此工具。 " +
+                "你可以用不同的关键词多次调用它，以便在撰写答案之前拼出完整的图景。",
             parameters: {
                 type: "object",
                 properties: {
                     query: {
                         type: "string",
                         description:
-                            "A specific, focused search query. Narrow queries return better results " +
-                            "than broad ones — e.g. 'Node.js 22 release date' not 'Node.js news'.",
+                            "一个具体、聚焦的搜索关键词。窄关键词比宽泛关键词返回的结果更好——" +
+                            "例如用 'Node.js 22 release date' 而不是 'Node.js news'。",
                     },
                 },
                 required: ["query"],
@@ -193,15 +194,15 @@ const tools: OpenAI.Chat.ChatCompletionTool[] = [
         function: {
             name: "write_answer",
             description:
-                "Write your final answer to the research question. Call this only when you have " +
-                "gathered enough information from your searches. Include sources (URLs) for any " +
-                "factual claims. Calling this ends the research session.",
+                "撰写研究问题的最终答案。只有当你通过搜索收集到足够信息时才调用此工具。 " +
+                "任何事实性论断都必须附上来源（URL）。 " +
+                "调用此工具将结束本次研究。",
             parameters: {
                 type: "object",
                 properties: {
                     answer: {
                         type: "string",
-                        description: "Your complete, well-sourced answer in markdown format",
+                        description: "以 markdown 格式撰写的完整答案，需附上充分的来源",
                     },
                 },
                 required: ["answer"],
@@ -257,11 +258,10 @@ async function runResearchAgent(question: string): Promise<string> {
             // 编造来源」：防幻觉的第一道闸（第二道是结果文本自带 URL）。
             role: "system",
             content:
-                "You are a research assistant. When given a question, search the web to find accurate, " +
-                "up-to-date information. Search multiple times with different queries if needed — " +
-                "one search is rarely enough for a complete answer. " +
-                "Only call write_answer once you are confident in your findings. " +
-                "Only cite URLs that appeared in your actual search results — never invent sources.",
+                "你是一名研究助手。当被问到问题时，请联网搜索以获取准确、及时的信息。必要时请用不同的关键词多次搜索——" +
+                "一次搜索往往不足以得出完整答案。 " +
+                "只有对研究结果有把握时才调用 write_answer。 " +
+                "只能引用实际搜索结果中出现的 URL——绝不编造来源。",
         },
         {role: "user", content: question},
     ];
@@ -271,7 +271,7 @@ async function runResearchAgent(question: string): Promise<string> {
     // （let 可重赋值、string | null 联合类型——语法细节见第三章。）
     let iteration = 0;
 
-    console.log(`Question: ${question}\n`);
+    console.log(`问题：${question}\n`);
 
     // 无限循环：两个出口（模型直接说话 / write_answer 交卷）+ 一道保险丝。
     while (true) {
@@ -286,13 +286,13 @@ async function runResearchAgent(question: string): Promise<string> {
             );
         }
 
-        console.log(`[iteration ${iteration}]`);
+        console.log(`[第 ${iteration} 次迭代]`);
 
         // 每圈一次真实模型调用：完整历史 + 工具菜单一起带上。
         // 与 03 相比这行代码零改动——换的只是 tools 数组的内容；
         // 「循环骨架与工具解耦」的好处正在于此。
         const response = await client.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: model,
             messages,
             tools,
             tool_choice: "auto",
@@ -317,7 +317,7 @@ async function runResearchAgent(question: string): Promise<string> {
                 if (call.function.name === "web_search") {
                     // 搜索结果会作为 tool 消息放回上下文。
                     // 模型下一轮可以基于这些结果决定是否继续搜。
-                    console.log(`  → web_search("${args.query}")`);
+                    console.log(`  → 调用 web_search("${args.query}")`);
                     const results = await webSearch(args.query);
                     // 日志只预览前 120 字符防刷屏；进 messages 的是完整结果
                     // （三元 + slice 的语法同第三章）。
@@ -333,13 +333,13 @@ async function runResearchAgent(question: string): Promise<string> {
                         messages.push({
                             role: "tool",
                             tool_call_id: call.id,
-                            content: "Missing required argument: answer"
+                            content: "缺少必需参数：answer"
                         });
                         continue;
                     }
                     finalAnswer = args.answer;
-                    console.log(`  → write_answer (${finalAnswer.length} chars)\n`);
-                    messages.push({role: "tool", tool_call_id: call.id, content: "Answer saved."});
+                    console.log(`  → 调用 write_answer（${finalAnswer.length} 字符）\n`);
+                    messages.push({role: "tool", tool_call_id: call.id, content: "答案已保存。"});
                     // 出口 B：先补齐 tool 应答再返回，保持 messages 合法（同第三章）。
                     return finalAnswer;
                 } else {
@@ -348,7 +348,7 @@ async function runResearchAgent(question: string): Promise<string> {
                     messages.push({
                         role: "tool",
                         tool_call_id: call.id,
-                        content: `Unknown tool: "${call.function.name}"`
+                        content: `未知工具："${call.function.name}"`
                     });
                 }
             }
@@ -373,27 +373,27 @@ async function main() {
     //
     // 📤 输入输出走查（控制台预期输出，大意；搜索词与圈数每次运行会有差异）：
     //
-    //   Question: What are the most notable new features in Node.js 22, and is it LTS yet?
+    //   问题：Node.js 22 有哪些值得关注的新特性？它进入 LTS 了吗？
     //
-    //   [iteration 1]
-    //     → web_search("Node.js 22 major new features")
+    //   [第 1 次迭代]
+    //     → 调用 web_search("Node.js 22 major new features")
     //        ↑ 模型自己拆题：先攻「新特性」这半问
     //     ← [1] Node.js 22 is now available!
     //       URL: https://nodejs.org/en/blog/announcements/v22-release-announce…
     //       （日志只预览 120 字符；完整 5 条结果已进 messages）
     //
-    //   [iteration 2]
-    //     → web_search("Node.js 22 LTS release date")
+    //   [第 2 次迭代]
+    //     → 调用 web_search("Node.js 22 LTS release date")
     //        ↑ 读完第一轮结果，发现「是否 LTS」还没准信，换个角度补搜
     //     ← [1] Node.js 22 enters active LTS …
     //
-    //   [iteration 3]
-    //     → write_answer (947 chars)
+    //   [第 3 次迭代]
+    //     → 调用 write_answer（947 字符）
     //        ↑ 两问都有据可依 → 交卷（terminal tool），循环在这里返回
     //
     //   ─────────────────────────────────────
     //
-    //   Answer:
+    //   答案：
     //   Node.js 22 的主要新特性：
     //   - 内置 WebSocket 客户端，无需第三方库
     //   - require() 可以同步加载 ESM 模块
@@ -408,11 +408,11 @@ async function main() {
     //  3. 圈数与搜索词每次可能不同——流程确定，路径不确定（agent 的常态，
     //     第三章已见过；后面的模块会专门讲怎么给这种不确定性加护栏）。
     const answer = await runResearchAgent(
-        "What are the most notable new features in Node.js 22, and is it LTS yet?"
+        "Node.js 22 有哪些值得关注的新特性？它进入 LTS 了吗？"
     );
 
     console.log("─".repeat(60));
-    console.log("\nAnswer:\n");
+    console.log("\n答案：\n");
     console.log(answer);
 }
 
