@@ -36,8 +36,9 @@
 import "dotenv/config";
 // 副作用导入：把 .env 里的 OPENAI_API_KEY / TAVILY_API_KEY 装进 process.env。
 import OpenAI from "openai";
+import client from "./src/openai-charles-client"
 
-const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
+// const client = new OpenAI({apiKey: process.env.OPENAI_API_KEY});
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 // Tavily 是外部搜索服务，所以除了 OPENAI_API_KEY，还需要 TAVILY_API_KEY。
 // （05 章用同一家搜索服务，再加一个「抓网页」的工具。）
